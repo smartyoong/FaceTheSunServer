@@ -7,11 +7,13 @@
 #include "FaceTheSunServerGUI.h"
 #include "FaceTheSunServerGUIDlg.h"
 #include "afxdialogex.h"
+#include <iostream>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
+#define ListenSockCall 1
 
 // 응용 프로그램 정보에 사용되는 CAboutDlg 대화 상자입니다.
 
@@ -59,12 +61,14 @@ CFaceTheSunServerGUIDlg::CFaceTheSunServerGUIDlg(CWnd* pParent /*=nullptr*/)
 void CFaceTheSunServerGUIDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
+	DDX_Control(pDX, IDC_EDIT_SERVERSTATUS, EditServerStatus);
 }
 
 BEGIN_MESSAGE_MAP(CFaceTheSunServerGUIDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDServerOnOff, &CFaceTheSunServerGUIDlg::OnClickedIdserveronoff)
 END_MESSAGE_MAP()
 
 
@@ -99,12 +103,18 @@ BOOL CFaceTheSunServerGUIDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE);			// 큰 아이콘을 설정합니다.
 	SetIcon(m_hIcon, FALSE);		// 작은 아이콘을 설정합니다.
 
-	ShowWindow(SW_MAXIMIZE);
+	//ShowWindow(SW_MAXIMIZE);
 
-	ShowWindow(SW_MINIMIZE);
+	//ShowWindow(SW_MINIMIZE);
 
 	// TODO: 여기에 추가 초기화 작업을 추가합니다.
-
+	WSADATA wsa;
+	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+	{
+		AfxMessageBox(L"서버 초기화 오류");
+		return FALSE;
+	}
+	hIocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0); // 초기화시 IOCP을 생성만 해둡니다 (연결 X)
 	return TRUE;  // 포커스를 컨트롤에 설정하지 않으면 TRUE를 반환합니다.
 }
 
@@ -157,3 +167,86 @@ HCURSOR CFaceTheSunServerGUIDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+
+
+void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
+{
+	// TODO: Add your control notification handler code here
+	if (IsServerOn) // 서버가 켜져있다면 종료 시킨다.
+	{
+
+	}
+	else
+	{
+		ListenSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // 윈도우 전용 소켓 생성
+		sockaddr_in ServerAddr;
+		ServerAddr.sin_family = AF_INET;
+		ServerAddr.sin_port = htons(18891);
+		ServerAddr.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
+		int retval = 0;
+		retval = bind(ListenSock, (sockaddr*)&ServerAddr, sizeof(ServerAddr));
+		retval =  listen(ListenSock, SOMAXCONN);
+		if (retval == SOCKET_ERROR)
+		{
+			AfxMessageBox(L"리슨 소켓 생성 실패");
+			exit(EXIT_FAILURE);
+		}
+		EditServerStatus.SetWindowTextW(L"서버설정 완료");
+		SOCKET ClientSock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+		if (ClientSock == INVALID_SOCKET)
+		{
+			AfxMessageBox(L"자식 소켓 생성 실패");
+			exit(EXIT_FAILURE);
+		}
+		us = &UserDataStream(ClientSock);
+		us->liSock = ListenSock;
+		if (us == nullptr)
+			std::cout << "us" << std::endl;
+		ListenTPWait = CreateThreadpoolWait(TPAcceptWaitCallBackFunc,us,NULL);
+		if (ListenTPWait == NULL)
+		{
+			std::cout << WSAGetLastError() << std::endl;
+			exit(EXIT_FAILURE);
+		}
+		acceptNotify = WSACreateEvent();
+		if (acceptNotify == NULL)
+		{
+			std::cout << WSAGetLastError() << std::endl;
+			exit(EXIT_FAILURE);
+		}
+		us->accpetNoti;
+		SetThreadpoolWait(ListenTPWait, acceptNotify, NULL);
+		WSAEventSelect(ListenSock, acceptNotify, FD_ACCEPT);
+		IsServerOn = true;
+	}
+}
+
+void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio)
+{
+
+}
+
+void CFaceTheSunServerGUIDlg::TPAcceptWaitCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WAIT wait, TP_WAIT_RESULT result)
+{
+	UserDataStream* us = (UserDataStream*)context;
+	WSANETWORKEVENTS ne;
+	WSAEnumNetworkEvents(us->liSock, us->accpetNoti, &ne);
+	if (!(ne.lNetworkEvents & FD_ACCEPT))
+	{
+		return;
+	}
+	int err = ne.iErrorCode[FD_ACCEPT_BIT];
+	if (err != 0)
+	{
+		std::cout << "ListenFail" << err << std::endl;
+		return;
+	}
+	SOCKET sock = accept(us->liSock, NULL, NULL);
+	if (sock == INVALID_SOCKET)
+	{
+		{
+			std::cout << "acceptFail" << err << std::endl;
+			return;
+		}
+	}
+}
