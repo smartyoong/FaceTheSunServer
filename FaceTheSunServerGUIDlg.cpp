@@ -62,6 +62,7 @@ void CFaceTheSunServerGUIDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_EDIT_SERVERSTATUS, EditServerStatus);
+	DDX_Control(pDX, IDC_LIST_USER, ConnectUserList);
 }
 
 BEGIN_MESSAGE_MAP(CFaceTheSunServerGUIDlg, CDialogEx)
@@ -113,13 +114,6 @@ BOOL CFaceTheSunServerGUIDlg::OnInitDialog()
 	{
 		AfxMessageBox(L"서버 초기화 오류");
 		return FALSE;
-	}
-	acceptNotify = WSACreateEvent();
-	if (acceptNotify == NULL)
-	{
-		AfxMessageBox(L"접속 신호용 이벤트 생성 실패");
-		std::cout << WSAGetLastError() << std::endl;
-		exit(EXIT_FAILURE);
 	}
 	return TRUE;  // 포커스를 컨트롤에 설정하지 않으면 TRUE를 반환합니다.
 }
@@ -180,7 +174,6 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 	// TODO: Add your control notification handler code here
 	if (IsServerOn) // 서버가 켜져있다면 종료 시킨다.
 	{
-
 	}
 	else
 	{
@@ -203,24 +196,53 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 			exit(EXIT_FAILURE);
 		}
 		EditServerStatus.SetWindowTextW(L"서버설정 완료");
-		us = &UserDataStream(ListenSock);
-		if (us == nullptr)
+		UserDataStream us; // OverLadpped확장 구조체로 필요한 정보를 송수신할 예정 자세한건 헤더파일 참고
+		ZeroMemory(&us, sizeof(UserDataStream));
+		// 위의 변수 생성자에 초기화 함수가 존재하므로 참고할때에 반드시 OVERLAPPED구조체를 초기화 시켜주지 않으면 에러가 남
+		acceptTPIO = CreateThreadpoolIo((HANDLE)ListenSock, TPAcceptCallBackFunc, this, NULL); //Dlg 갱신용으로 this 포인터 전송
+		if (acceptTPIO == NULL)
 		{
-			AfxMessageBox(L"UserDataStream이 nullptr입니다.");
-			exit(EXIT_FAILURE);
-		}
-		us->accpetNoti = acceptNotify;
-		us->FTSp = this;
-		ListenTPWait = CreateThreadpoolWait(TPAcceptWaitCallBackFunc, us, NULL);
-		if (ListenTPWait == NULL)
-		{
-			AfxMessageBox(L"접속 대기용 스레드풀 생성 실패");
+			AfxMessageBox(L"스레드풀 생성 실패");
 			std::cout << WSAGetLastError() << std::endl;
 			exit(EXIT_FAILURE);
 		}
-		SetThreadpoolWait(ListenTPWait, acceptNotify, NULL);
+		StartThreadpoolIo(acceptTPIO);
 		EditServerStatus.SetWindowTextW(L"스레드풀 생성 완료");
-		WSAEventSelect(ListenSock, acceptNotify, FD_ACCEPT);
+		GUID guid = WSAID_ACCEPTEX;
+		DWORD dwb = 0;
+		if (WSAIoctl(ListenSock, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &pAcceptEX, sizeof(pAcceptEX), &dwb, nullptr, nullptr) == SOCKET_ERROR) // acceptex함수획득
+		{
+			AfxMessageBox(L"accpet함수 획득 실패");
+			std::cout << WSAGetLastError() << std::endl;
+			exit(EXIT_FAILURE);
+		}
+		guid = WSAID_GETACCEPTEXSOCKADDRS;
+		dwb = 0;
+		if (WSAIoctl(ListenSock, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &pAcceptAddrs, sizeof(pAcceptAddrs), &dwb, nullptr, nullptr) == SOCKET_ERROR) // getacceptexsockaddr함수획득
+		{
+			AfxMessageBox(L"sockaddr함수 획득 실패");
+			std::cout << WSAGetLastError() << std::endl;
+			exit(EXIT_FAILURE);
+		}
+		SOCKET ClientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // 이 소켓은 절대 바인드시키거나 연결시키지 말것
+		if (ClientSocket == INVALID_SOCKET)
+		{
+			std::cout << WSAGetLastError() << std::endl;
+		}
+		us.sock = ClientSocket;
+		if (!pAcceptEX(ListenSock, ClientSocket, us.buffer, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)&us)) 
+			// 현재는 수신바이트를 0으로해두고 DB랑 연결후에 수신바이트 크기를 정해서 지정할 예정
+		{
+			int err = WSAGetLastError();
+			if (err != WSA_IO_PENDING)
+			{
+				std::cout << err << std::endl;
+				CancelThreadpoolIo(acceptTPIO);
+				CloseThreadpoolIo(acceptTPIO);
+				closesocket(ClientSocket);
+				closesocket(ListenSock);
+			}
+		}
 		EditServerStatus.SetWindowTextW(L"서버대기 준비 완료");
 		IsServerOn = true;
 	}
@@ -228,7 +250,104 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 
 void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio)
 {
-	/* 다음번 송수신 참고용
+	UserDataStream* us = (UserDataStream*)overlapped;
+	CFaceTheSunServerGUIDlg* dlg = (CFaceTheSunServerGUIDlg*)context;
+	PSOCKADDR lsm, rsm;
+	int nsiloc, nsirem = 0;
+	dlg->pAcceptAddrs(us->buffer, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN)+16, &lsm, &nsiloc, &rsm, &nsirem);
+	dlg->EditServerStatus.SetWindowTextW(L"새로운 클라이언트가 접속했습니다");
+	SOCKADDR_IN saLoc;
+	SOCKADDR_IN saRem;
+	ZeroMemory(&saLoc, sizeof(SOCKADDR_IN));
+	ZeroMemory(&saRem, sizeof(SOCKADDR_IN));
+	saLoc = *((PSOCKADDR_IN)lsm);
+	saRem = *((PSOCKADDR_IN)rsm);
+	CString a;
+	char addr[INET_ADDRSTRLEN];
+	a += inet_ntop(AF_INET, &saRem.sin_addr.S_un.S_addr, addr, sizeof(addr));
+	dlg->ConnectUserList.AddString(a);
+	StartThreadpoolIo(tio);
+	dlg->BeginAcceptStart(); 
+	// acceptEX를 호출할때는 반드시 함수형식으로 선언해야한다. 여기서는 thread가 호출하게되므로, 함수형식으로 묶어서 한번에 호출시키지않으면 204.204.204.204 Overflow를 보게된다.
+	// 이거 진짜 왜 안되는지 자료도 없어서 혼자 알아내는데 너무 고생했다. ㅠㅠㅠ
+}
+
+void CFaceTheSunServerGUIDlg::BeginAcceptStart()
+{
+	UserDataStream uss;
+	ZeroMemory(&uss, sizeof(UserDataStream));
+	SOCKET ClientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // 이 소켓은 절대 바인드시키거나 연결시키지 말것 (추후 해당 소켓을 DisconnectEX 함수를 통해서 재사용할 예정)
+	if (ClientSocket == INVALID_SOCKET)
+	{
+		std::cout << WSAGetLastError() << std::endl;
+	}
+	uss.sock = ClientSocket;
+	if (!pAcceptEX(ListenSock, ClientSocket, uss.buffer, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)&uss))
+		// 현재는 수신바이트를 0으로해두고 DB랑 연결후에 수신바이트 크기를 정해서 지정할 예정
+	{
+		int err = WSAGetLastError();
+		if (err != WSA_IO_PENDING)
+		{
+			std::cout << err << std::endl;
+			CancelThreadpoolIo(acceptTPIO);
+			return;
+		}
+	}
+}
+
+/*
+void CFaceTheSunServerGUIDlg::TPAcceptWaitCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WAIT wait, TP_WAIT_RESULT result)
+{
+	UserDataStream* us = (UserDataStream*)context;
+	WSANETWORKEVENTS ne;
+	WSAEnumNetworkEvents(us->liSock, us->accpetNoti, &ne);
+	if (!(ne.lNetworkEvents & FD_ACCEPT))
+	{
+		return;
+	}
+	int err = 0;
+	if (ne.iErrorCode[FD_ACCEPT_BIT] != 0)
+	{
+		AfxMessageBox(L"네트워크 이벤트 설정 오류");
+		std::cout << "ListenFail" << ne.iErrorCode[FD_ACCEPT_BIT] <<std::endl;
+		return;
+	}
+	sockaddr_in addrInfo;
+	ZeroMemory(&addrInfo, sizeof(sockaddr_in));
+	int addrlen =sizeof(sockaddr);
+	SOCKET sock = accept(us->liSock, (sockaddr*)&addrInfo, &addrlen);
+	if (sock == INVALID_SOCKET)
+	{
+		{
+			err = WSAGetLastError();
+			if (err != WSAEINTR)
+			{
+				AfxMessageBox(L"accept 오류");
+				std::cout << err << std::endl;
+				return;
+			}
+		}
+	}
+	char addrbuf[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &addrInfo.sin_addr.S_un.S_addr, addrbuf, sizeof(addrbuf));
+	CString a = L"클라이언트 접속 주소 : ";
+	a += (LPSTR)addrbuf;
+	us->FTSp->EditServerStatus.SetWindowTextW(a); // 다음번 코딩때는 ListBox에 해당내용을 추가하고 여기에는 수신중을 입력
+
+	UserOrder* uo = new UserOrder(sock);
+	us->UserOrederP = uo;
+	acceptTPIO = CreateThreadpoolIo((HANDLE)sock, TPAcceptCallBackFunc, us, NULL);
+	EnterCriticalSection(&pie->_cs);
+	pie->_conn.insert(psi);
+	LeaveCriticalSection(&pie->_cs);
+
+	Handler_SockChild(pInst, pie, psi, NO_ERROR, -1, psi->_ptpIo);
+	SetThreadpoolWait(wait, us->accpetNoti, NULL);
+	WSAEventSelect(us->liSock, us->accpetNoti, FD_ACCEPT);
+}
+*/
+
+/* 다음번 송수신 참고용
 	 PIOCP_ENV  pie = (PIOCP_ENV )pCtx;
 	PSOCK_ITEM psi = (PSOCK_ITEM)pov;
 
@@ -279,74 +398,3 @@ $LABEL_CLOSE:
 	delete psi;
 	CloseThreadpoolIo(ptpIo);
 	*/
-}
-
-void CFaceTheSunServerGUIDlg::TPAcceptWaitCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WAIT wait, TP_WAIT_RESULT result)
-{
-	UserDataStream* us = (UserDataStream*)context;
-	WSANETWORKEVENTS ne;
-	WSAEnumNetworkEvents(us->liSock, us->accpetNoti, &ne);
-	if (!(ne.lNetworkEvents & FD_ACCEPT))
-	{
-		return;
-	}
-	int err = 0;
-	if (ne.iErrorCode[FD_ACCEPT_BIT] != 0)
-	{
-		AfxMessageBox(L"네트워크 이벤트 설정 오류");
-		std::cout << "ListenFail" << ne.iErrorCode[FD_ACCEPT_BIT] <<std::endl;
-		LPVOID lpMsgBuf;
-		FormatMessage(
-			FORMAT_MESSAGE_ALLOCATE_BUFFER |
-			FORMAT_MESSAGE_FROM_SYSTEM,
-			NULL, ne.iErrorCode[FD_ACCEPT_BIT],
-			MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-			(LPTSTR)&lpMsgBuf, 0, NULL);
-		printf("[오류] %s", (LPCTSTR)lpMsgBuf);
-		LocalFree(lpMsgBuf);
-		//return;
-	}
-	sockaddr_in addrInfo;
-	ZeroMemory(&addrInfo, sizeof(sockaddr_in));
-	int addrlen =0;
-	SOCKET sock = accept(us->liSock, (sockaddr*)&addrInfo, &addrlen);
-	if (sock == INVALID_SOCKET)
-	{
-		{
-			err = WSAGetLastError();
-			if (err != WSAEINTR)
-			{
-				AfxMessageBox(L"accept 오류");
-				LPVOID lpMsgBuf;
-				FormatMessage(
-					FORMAT_MESSAGE_ALLOCATE_BUFFER |
-					FORMAT_MESSAGE_FROM_SYSTEM,
-					NULL, err,
-					MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-					(LPTSTR)&lpMsgBuf, 0, NULL);
-				printf("[오류] %s", (LPCTSTR)lpMsgBuf);
-				LocalFree(lpMsgBuf);
-				std::cout << err << std::endl;
-				return;
-			}
-		}
-	}
-	char addrbuf[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &addrInfo.sin_addr.S_un.S_addr, addrbuf, sizeof(addrbuf));
-	CString a = L"클라이언트 접속 주소 : ";
-	a += (LPSTR)addrbuf;
-	us->FTSp->EditServerStatus.SetWindowTextW(a); // 다음번 코딩때는 ListBox에 해당내용을 추가하고 여기에는 수신중을 입력
-
-	/* 다음번 참고용 송수신 스레드풀 생성시의 참고용
-	* PSOCK_ITEM psi = new SOCK_ITEM(sock);
-	psi->_ptpIo = CreateThreadpoolIo((HANDLE)psi->_sock, Handler_SockChild, pie, NULL);
-
-	EnterCriticalSection(&pie->_cs);
-	pie->_conn.insert(psi);
-	LeaveCriticalSection(&pie->_cs);
-
-	Handler_SockChild(pInst, pie, psi, NO_ERROR, -1, psi->_ptpIo);
-	*/
-	SetThreadpoolWait(wait, us->accpetNoti, NULL);
-	WSAEventSelect(us->liSock, us->accpetNoti, FD_ACCEPT);
-}
