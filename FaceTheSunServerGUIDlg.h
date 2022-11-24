@@ -2,22 +2,27 @@
 // FaceTheSunServerGUIDlg.h: 헤더 파일
 //
 #pragma once
+#include <map>
+#include <vector>
+#include <queue>
 #pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console")
+enum class SendOrRecv : DWORD
+{
+	Accept = 0,
+	Recv = 1,
+	Send = 2
+};
 class UserDataStream : OVERLAPPED // overlap
 {
 public: 
-	enum class SendOrRecv : DWORD
-	{
-		Accept = 0,
-		Recv = 1,
-		Send = 2
-	};
 	SOCKET sock; // accept로 받은 소켓
 	PVOID CustomOrder = nullptr; //명령 및 명령 길이
 	int OrderLen = 0;
 	char buffer[4096]; // 명령을 받는 버퍼
+	char ID[4096]; // ID 연결 끊긴 소켓 관리용
 	int Category = 0; // 명령 분류
-	SendOrRecv IsItSendOrRecv = SendOrRecv::Recv; // 전송 혹은 수신 소켓 구별용
+	SendOrRecv IsItSendOrRecv = SendOrRecv::Accept; // 전송 혹은 수신 소켓 구별용
+	PTP_IO ptpRecvSend; // SendRecv 전용 스레드풀
 };
 
 
@@ -53,9 +58,16 @@ public:
 	bool IsServerOn = false; // 서버 ON OFF 판별용
 	PTP_IO acceptTPIO = nullptr; //송수신용 스레드풀 객체
 	static void CALLBACK TPAcceptCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio);
+	static void CALLBACK TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio);
 	LPFN_ACCEPTEX pAcceptEX = nullptr; // acceptEx
 	LPFN_GETACCEPTEXSOCKADDRS pAcceptAddrs = nullptr; // GetAccpetExSockAddrs
 	CListBox ConnectUserList; // 접속된 유저 정보
 	SOCKET ListenSock = INVALID_SOCKET; // 소켓
-	void BeginAcceptStart();
+	void BeginAcceptStart(); // accept 시키는 함수
+	void BeginRecvStart(UserDataStream* us); // Recv시키는 함수
+	void SendKindOfData(UserDataStream* us); // 상황별Send
+	void CleanUpAllSocketAndTP();
+	std::map<char*, SOCKET> ConnectedSocketSet; // 연결된 소켓들 관리용 키는 ID, 값은 소켓
+	std::vector<UserDataStream*>USArray; // UserData보관하다가 나중에 TP관리용
+	std::queue<SOCKET>DisconnectedSocket; // 연결이 끊긴 소켓들을 보관했다가 재사용하는데 초점을 둔다.
 };

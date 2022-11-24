@@ -174,6 +174,12 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 	// TODO: Add your control notification handler code here
 	if (IsServerOn) // 서버가 켜져있다면 종료 시킨다.
 	{
+		CleanUpAllSocketAndTP();
+		WaitForThreadpoolIoCallbacks(acceptTPIO, TRUE); // 콜백이 끝나기를 기다린다.
+		CloseThreadpoolIo(acceptTPIO);
+		closesocket(ListenSock);
+		WSACleanup();
+		//추후에 버튼 글씨 바뀌는것도 추가할것
 	}
 	else
 	{
@@ -230,8 +236,8 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 			std::cout << WSAGetLastError() << std::endl;
 		}
 		us.sock = ClientSocket;
-		if (!pAcceptEX(ListenSock, ClientSocket, us.buffer, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)&us)) 
-			// 현재는 수신바이트를 0으로해두고 DB랑 연결후에 수신바이트 크기를 정해서 지정할 예정
+		if (!pAcceptEX(ListenSock, ClientSocket, us.ID, 16, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)&us)) 
+			// 현재는 수신바이트를 16으로해두고 DB랑 연결후에 수신바이트 크기를 정해서 지정할 예정
 		{
 			int err = WSAGetLastError();
 			if (err != WSA_IO_PENDING)
@@ -252,24 +258,82 @@ void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANC
 {
 	UserDataStream* us = (UserDataStream*)overlapped;
 	CFaceTheSunServerGUIDlg* dlg = (CFaceTheSunServerGUIDlg*)context;
+	//dlg->USArray.push_back(us); 크리티컬 섹션 추후에 선언하고 추가할것
 	PSOCKADDR lsm, rsm;
 	int nsiloc, nsirem = 0;
-	dlg->pAcceptAddrs(us->buffer, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN)+16, &lsm, &nsiloc, &rsm, &nsirem);
-	dlg->EditServerStatus.SetWindowTextW(L"새로운 클라이언트가 접속했습니다");
+	dlg->pAcceptAddrs(us->ID, 16, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN)+16, &lsm, &nsiloc, &rsm, &nsirem);
+	dlg->EditServerStatus.SetWindowTextW(L"클라이언트 수신 중");
 	SOCKADDR_IN saLoc;
 	SOCKADDR_IN saRem;
 	ZeroMemory(&saLoc, sizeof(SOCKADDR_IN));
 	ZeroMemory(&saRem, sizeof(SOCKADDR_IN));
 	saLoc = *((PSOCKADDR_IN)lsm);
 	saRem = *((PSOCKADDR_IN)rsm);
+	us->ID[NumOfBytesTrans] = '\0';
 	CString a;
 	char addr[INET_ADDRSTRLEN];
 	a += inet_ntop(AF_INET, &saRem.sin_addr.S_un.S_addr, addr, sizeof(addr));
+	a += " ";
+	a += us->ID;
 	dlg->ConnectUserList.AddString(a);
+	if (us->sock == INVALID_SOCKET)
+		AfxMessageBox(_T("SEX"));
+	us->IsItSendOrRecv = SendOrRecv::Accept;
+	us->ptpRecvSend = CreateThreadpoolIo((HANDLE)us->sock, TPRecvSendCallBackFunc,dlg,NULL);
+	if (us->ptpRecvSend == NULL)
+	{
+		AfxMessageBox(L"데이터 송수신 스레드풀 생성 실패");
+		std::cout << WSAGetLastError() << std::endl;
+		exit(EXIT_FAILURE);
+	}
 	StartThreadpoolIo(tio);
+	StartThreadpoolIo(us->ptpRecvSend);
+	TPRecvSendCallBackFunc(instance, dlg, us, NO_ERROR, -19, us->ptpRecvSend); // recv를 실행하도록 임의로 1번 호출
 	dlg->BeginAcceptStart(); 
 	// acceptEX를 호출할때는 반드시 함수형식으로 선언해야한다. 여기서는 thread가 호출하게되므로, 함수형식으로 묶어서 한번에 호출시키지않으면 204.204.204.204 Overflow를 보게된다.
 	// 이거 진짜 왜 안되는지 자료도 없어서 혼자 알아내는데 너무 고생했다. ㅠㅠㅠ
+}
+
+void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio)
+{
+	UserDataStream* us = (UserDataStream*)overlapped;
+	CFaceTheSunServerGUIDlg* dlg = (CFaceTheSunServerGUIDlg*)context;
+	dlg->EditServerStatus.SetWindowTextW(L"데이터 송수신 중");
+	std::cout << "RecvFunc" << (int)us->IsItSendOrRecv <<std::endl;
+	if (NumOfBytesTrans == -19) // accept를 시켰다. 나중에 로그인을 구현할경우 send함수를 설정할것
+	{
+		std::cout << "AccFunc" << std::endl;
+		StartThreadpoolIo(tio);
+		dlg->BeginRecvStart(us);
+	}
+	else if (NumOfBytesTrans > 0 && result == NO_ERROR)
+	{
+		std::cout << "RecvOrSend" << std::endl;
+		if (NumOfBytesTrans>0) //바로 이전에 데이터를 전송했으니 받아야한다.
+		{
+			std::cout << "SendFunc" << std::endl;
+			us->buffer[NumOfBytesTrans] = '\0';
+			CString a;
+			a += us->buffer;
+			dlg->ConnectUserList.AddString(a); // 테스트용으로 여기에 글을 보여주지만 나중에는 데이터 송수신 함수를 작성해야함
+			dlg->SendKindOfData(us);
+			StartThreadpoolIo(tio);
+			dlg->BeginRecvStart(us);
+		}
+	}
+	else if (result == ERROR_OPERATION_ABORTED) // 작업을 중단할때 발생하는 오류
+		return;
+	else if (result == ERROR_SUCCESS || result == ERROR_NETNAME_DELETED) // 상대방이 연결을 끊음
+	{
+		std::cout << "Client Disconnected" << std::endl;
+		//추후 소켓 닫고 스레드풀을 해제할수 있도록 추가할것
+	}
+	else
+	{
+		std::cout << "Error" << std::endl;
+		closesocket(us->sock);
+		CloseThreadpoolIo(tio);
+	}
 }
 
 void CFaceTheSunServerGUIDlg::BeginAcceptStart()
@@ -282,7 +346,7 @@ void CFaceTheSunServerGUIDlg::BeginAcceptStart()
 		std::cout << WSAGetLastError() << std::endl;
 	}
 	uss.sock = ClientSocket;
-	if (!pAcceptEX(ListenSock, ClientSocket, uss.buffer, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)&uss))
+	if (!pAcceptEX(ListenSock, ClientSocket, uss.ID, 16, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)&uss))
 		// 현재는 수신바이트를 0으로해두고 DB랑 연결후에 수신바이트 크기를 정해서 지정할 예정
 	{
 		int err = WSAGetLastError();
@@ -295,106 +359,38 @@ void CFaceTheSunServerGUIDlg::BeginAcceptStart()
 	}
 }
 
-/*
-void CFaceTheSunServerGUIDlg::TPAcceptWaitCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WAIT wait, TP_WAIT_RESULT result)
+void CFaceTheSunServerGUIDlg::BeginRecvStart(UserDataStream* us)
 {
-	UserDataStream* us = (UserDataStream*)context;
-	WSANETWORKEVENTS ne;
-	WSAEnumNetworkEvents(us->liSock, us->accpetNoti, &ne);
-	if (!(ne.lNetworkEvents & FD_ACCEPT))
+	WSABUF wb;
+	DWORD dwFlags = 0;
+	wb.buf = us->buffer;
+	wb.len = sizeof(us->buffer);
+	int err = WSARecv(us->sock, &wb, 1, nullptr, &dwFlags, (OVERLAPPED*)us, nullptr);
+	if (err == SOCKET_ERROR)
 	{
-		return;
-	}
-	int err = 0;
-	if (ne.iErrorCode[FD_ACCEPT_BIT] != 0)
-	{
-		AfxMessageBox(L"네트워크 이벤트 설정 오류");
-		std::cout << "ListenFail" << ne.iErrorCode[FD_ACCEPT_BIT] <<std::endl;
-		return;
-	}
-	sockaddr_in addrInfo;
-	ZeroMemory(&addrInfo, sizeof(sockaddr_in));
-	int addrlen =sizeof(sockaddr);
-	SOCKET sock = accept(us->liSock, (sockaddr*)&addrInfo, &addrlen);
-	if (sock == INVALID_SOCKET)
-	{
+		err = WSAGetLastError();
+		if (err != WSA_IO_PENDING)
 		{
-			err = WSAGetLastError();
-			if (err != WSAEINTR)
-			{
-				AfxMessageBox(L"accept 오류");
-				std::cout << err << std::endl;
-				return;
-			}
+			std::cout << "WSARecv" << err << std::endl;
+			CancelThreadpoolIo(us->ptpRecvSend);
 		}
 	}
-	char addrbuf[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &addrInfo.sin_addr.S_un.S_addr, addrbuf, sizeof(addrbuf));
-	CString a = L"클라이언트 접속 주소 : ";
-	a += (LPSTR)addrbuf;
-	us->FTSp->EditServerStatus.SetWindowTextW(a); // 다음번 코딩때는 ListBox에 해당내용을 추가하고 여기에는 수신중을 입력
-
-	UserOrder* uo = new UserOrder(sock);
-	us->UserOrederP = uo;
-	acceptTPIO = CreateThreadpoolIo((HANDLE)sock, TPAcceptCallBackFunc, us, NULL);
-	EnterCriticalSection(&pie->_cs);
-	pie->_conn.insert(psi);
-	LeaveCriticalSection(&pie->_cs);
-
-	Handler_SockChild(pInst, pie, psi, NO_ERROR, -1, psi->_ptpIo);
-	SetThreadpoolWait(wait, us->accpetNoti, NULL);
-	WSAEventSelect(us->liSock, us->accpetNoti, FD_ACCEPT);
 }
-*/
 
-/* 다음번 송수신 참고용
-	 PIOCP_ENV  pie = (PIOCP_ENV )pCtx;
-	PSOCK_ITEM psi = (PSOCK_ITEM)pov;
-
-	if (dwTrBytes > 0 && dwErrCode == NO_ERROR)
+void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
+{
+	int err = send(us->sock, us->buffer, sizeof(us->buffer), 0);
+	if (err == SOCKET_ERROR)
 	{
-		if ((int)dwTrBytes > 0)
-		{
-			psi->_buff[dwTrBytes] = 0;
-			cout << " *** Client(" << psi->_sock << ") sent : " << psi->_buff << endl;
-
-			int lSockRet = send(psi->_sock, psi->_buff, dwTrBytes, 0);
-			if (lSockRet == SOCKET_ERROR)
-			{
-				dwErrCode = WSAGetLastError();
-				goto $LABEL_CLOSE;
-			}
-		}
-
-		StartThreadpoolIo(ptpIo);
-		WSABUF wb; DWORD dwFlags = 0;
-		wb.buf = psi->_buff, wb.len = sizeof(psi->_buff);
-		int nSockRet = WSARecv(psi->_sock, &wb, 1, NULL, &dwFlags, psi, NULL);
-		if (nSockRet == SOCKET_ERROR)
-		{
-			dwErrCode = WSAGetLastError();
-			if (dwErrCode != WSA_IO_PENDING)
-			{
-				CancelThreadpoolIo(ptpIo);
-				goto $LABEL_CLOSE;
-			}
-		}
-		return;
+		std::cout << WSAGetLastError() << std::endl;
+		CancelThreadpoolIo(us->ptpRecvSend);
 	}
+}
 
-$LABEL_CLOSE:
-	if (dwErrCode == ERROR_OPERATION_ABORTED)
-		return;
-
-	if (dwErrCode == ERROR_SUCCESS || dwErrCode == ERROR_NETNAME_DELETED)
-		cout << " ==> Client " << psi->_sock << " disconnected..." << endl;
-	else
-		cout << " ==> Error occurred, code = " << dwErrCode << endl;
-	EnterCriticalSection(&pie->_cs);
-	pie->_conn.erase(psi);
-	LeaveCriticalSection(&pie->_cs);
-
-	closesocket(psi->_sock);
-	delete psi;
-	CloseThreadpoolIo(ptpIo);
-	*/
+void CFaceTheSunServerGUIDlg::CleanUpAllSocketAndTP()
+{
+	//CancelIoEx(소켓, 오버랩);
+	//WaitForThreadpoolIoCallbacks(TP객체, TRUE);
+	//closesocket();
+	//CloseThreadpoolIo();
+}
