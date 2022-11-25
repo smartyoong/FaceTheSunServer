@@ -6,12 +6,6 @@
 #include <vector>
 #include <queue>
 #pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console")
-enum class SendOrRecv : DWORD
-{
-	Accept = 0,
-	Recv = 1,
-	Send = 2
-};
 class UserDataStream : OVERLAPPED // overlap
 {
 public: 
@@ -20,9 +14,8 @@ public:
 	int OrderLen = 0;
 	char buffer[4096]; // 명령을 받는 버퍼
 	char ID[4096]; // ID 연결 끊긴 소켓 관리용
-	int Category = 0; // 명령 분류
-	SendOrRecv IsItSendOrRecv = SendOrRecv::Accept; // 전송 혹은 수신 소켓 구별용
 	PTP_IO ptpRecvSend; // SendRecv 전용 스레드풀
+	bool Reuse = false;
 };
 
 
@@ -61,13 +54,17 @@ public:
 	static void CALLBACK TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio);
 	LPFN_ACCEPTEX pAcceptEX = nullptr; // acceptEx
 	LPFN_GETACCEPTEXSOCKADDRS pAcceptAddrs = nullptr; // GetAccpetExSockAddrs
+	LPFN_DISCONNECTEX pDisconnect = nullptr; // DisconnectedEX
 	CListBox ConnectUserList; // 접속된 유저 정보
 	SOCKET ListenSock = INVALID_SOCKET; // 소켓
 	void BeginAcceptStart(); // accept 시키는 함수
 	void BeginRecvStart(UserDataStream* us); // Recv시키는 함수
 	void SendKindOfData(UserDataStream* us); // 상황별Send
-	void CleanUpAllSocketAndTP();
-	std::map<char*, SOCKET> ConnectedSocketSet; // 연결된 소켓들 관리용 키는 ID, 값은 소켓
+	void CleanUpAllSocketAndTP(); // 모든 클라이언트 소켓 및 데이터, 스레드풀 삭제용
+	std::map<CString, SOCKET> ConnectedSocketSet; // 연결된 소켓들 관리용 키는 ID, 값은 소켓
 	std::vector<UserDataStream*>USArray; // UserData보관하다가 나중에 TP관리용
 	std::queue<SOCKET>DisconnectedSocket; // 연결이 끊긴 소켓들을 보관했다가 재사용하는데 초점을 둔다.
+	CRITICAL_SECTION SyncroData; // 소켓이나 UserDataStream객체 삽입 삭제시 에러방지를 위한 임계영역
+	CButton ServerOnOffButton; // 서버 온오프
+	afx_msg void OnBnClickedButtonShutdown();
 };
