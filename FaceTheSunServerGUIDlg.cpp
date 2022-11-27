@@ -72,6 +72,7 @@ BEGIN_MESSAGE_MAP(CFaceTheSunServerGUIDlg, CDialogEx)
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDServerOnOff, &CFaceTheSunServerGUIDlg::OnClickedIdserveronoff)
 	ON_BN_CLICKED(IDC_BUTTON_SHUTDOWN, &CFaceTheSunServerGUIDlg::OnBnClickedButtonShutdown)
+	ON_BN_CLICKED(IDRfreshUser, &CFaceTheSunServerGUIDlg::OnBnClickedRfreshuser)
 END_MESSAGE_MAP()
 
 
@@ -265,6 +266,7 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 
 void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio)
 {
+	/*주의 이 콜백함수에서 MFC클라이언트 화면 갱신 사용시 문제 없이 사용되나 추후 서버를 닫을때 데드락이 발생합니다.*/
 	UserDataStream* us = (UserDataStream*)overlapped;
 	CFaceTheSunServerGUIDlg* dlg = (CFaceTheSunServerGUIDlg*)context;
 	EnterCriticalSection(&dlg->SyncroData);
@@ -273,29 +275,27 @@ void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANC
 	PSOCKADDR lsm, rsm;
 	int nsiloc, nsirem = 0;
 	dlg->pAcceptAddrs(us->ID, 16, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN)+16, &lsm, &nsiloc, &rsm, &nsirem); //주소 구해오기
-	dlg->EditServerStatus.SetWindowTextW(_T("클라이언트 수신 중"));
 	SOCKADDR_IN saLoc;
 	SOCKADDR_IN saRem;
 	ZeroMemory(&saLoc, sizeof(SOCKADDR_IN));
 	ZeroMemory(&saRem, sizeof(SOCKADDR_IN));
 	saLoc = *((PSOCKADDR_IN)lsm);
 	saRem = *((PSOCKADDR_IN)rsm);
-	us->ID[NumOfBytesTrans] = '\0';
-	CString a;
-	char addr[INET_ADDRSTRLEN];
+	//char addr[INET_ADDRSTRLEN]; ip받아오는 건데 만약 필요하면 주석 해제할것 다만 아이디로 대체할 예정
 	//a += inet_ntop(AF_INET, &saRem.sin_addr.S_un.S_addr, addr, sizeof(addr));
 	//a += " ";
-	a += us->ID;
-	dlg->ConnectUserList.AddString(a);
 	if (us->sock == INVALID_SOCKET) // 클라이언트가 정상인지 한번 더 체크
 		AfxMessageBox(_T("AcceptSocketFail"));
 	EnterCriticalSection(&dlg->SyncroData);
+	us->ID[NumOfBytesTrans] = '\0';
+	CString a(us->ID);
+	dlg->OnlineUsers.insert(a);
 	dlg->ConnectedSocketSet.insert(std::make_pair(a,us->sock)); // ID와 관련된 소켓을 맵에 집어넣는다. (해당 아이디의 소켓의 연결을 끊기위함)
 	LeaveCriticalSection(&dlg->SyncroData);
 	StartThreadpoolIo(tio);
 	if (us->Reuse)
 	{
-		dlg->BeginRecvStart(us);
+		dlg->BeginRecvStart(us); //disconnect에서 startthreadpool 시켰기때문에 호출만
 	}
 	else
 	{
@@ -307,7 +307,7 @@ void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANC
 			exit(EXIT_FAILURE);
 		}
 		StartThreadpoolIo(us->ptpRecvSend);
-		TPRecvSendCallBackFunc(instance, dlg, us, NO_ERROR, -19, us->ptpRecvSend); // recv를 실행하도록 임의로 1번 호출
+		dlg->BeginRecvStart(us);
 	}
 	dlg->BeginAcceptStart(); 
 	// acceptEX를 호출할때는 반드시 함수형식으로 선언해야한다. 여기서는 thread가 호출하게되므로, 함수형식으로 묶어서 한번에 호출시키지않으면 204.204.204.204 Overflow를 보게된다.
@@ -318,13 +318,17 @@ void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE insta
 {
 	UserDataStream* us = (UserDataStream*)overlapped;
 	CFaceTheSunServerGUIDlg* dlg = (CFaceTheSunServerGUIDlg*)context;
-	dlg->EditServerStatus.SetWindowTextW(_T("데이터 송수신 중"));
-	if (NumOfBytesTrans == -19) // accept를 시켰다. 나중에 로그인을 구현할경우 send함수를 설정할것
+	if (us->Error)
+		CancelIo(tio); // 오류발생시 종료
+	if (us->Stop) // 종료시도
 	{
-		StartThreadpoolIo(tio);
-		dlg->BeginRecvStart(us);
+		CancelIo((HANDLE)us->sock);
+		CancelThreadpoolIo(tio);
+		WaitForThreadpoolIoCallbacks(tio, TRUE);
+		CloseThreadpoolIo(tio);
 	}
-	else if (NumOfBytesTrans > 0 && result == NO_ERROR)
+	dlg->EditServerStatus.SetWindowTextW(_T("데이터 송수신 중"));
+	if (NumOfBytesTrans > 0 && result == NO_ERROR)
 	{
 		if (NumOfBytesTrans>0) //바로 이전에 데이터를 전송했으니 받아야한다.
 		{
@@ -354,19 +358,23 @@ void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE insta
 		{
 			std::cout << "Disconncet 실패" << WSAGetLastError() << std::endl;
 		}
-		std::cout << dlg->ConnectUserList.FindString(0, CString(us->ID)) << std::endl;
 		EnterCriticalSection(&dlg->SyncroData);
 		dlg->DisconnectedSocket.push(us->sock);
 		dlg->ConnectedSocketSet.erase(CString(us->ID)); // 해당 소켓이 연결이 끊겼으므로 관리해야되는 목록에서 제거
 		dlg->ConnectUserList.DeleteString(dlg->ConnectUserList.FindString(0,CString(us->ID)));
+		dlg->OnlineUsers.erase(CString(us->ID));
 		LeaveCriticalSection(&dlg->SyncroData);
+		StartThreadpoolIo(tio); // 미래에 재사용을 준비하여 스레드풀 스타트 시작
 	}
 	else if(result != WSA_IO_PENDING)
 	{
-		std::cout << "ErrorSendRecv" << std::endl;
-		std::cout << WSAGetLastError() << std::endl;
-		closesocket(us->sock);
-		//CloseThreadpoolIo(tio); 나중에 일괄적으로 닫을 예정 임시방편
+		if (WSAGetLastError() != WSA_IO_PENDING)
+		{
+			std::cout << "ErrorSendRecv" << std::endl;
+			std::cout << WSAGetLastError() << std::endl;
+			closesocket(us->sock);
+		}
+		CloseThreadpoolIo(tio);
 	}
 }
 
@@ -418,7 +426,7 @@ void CFaceTheSunServerGUIDlg::BeginAcceptStart() // 아마도 이미 사용되�
 	}
 }
 
-void CFaceTheSunServerGUIDlg::BeginRecvStart(UserDataStream* us)
+void CFaceTheSunServerGUIDlg::BeginRecvStart(UserDataStream* us) // 데이터 수신을 비동기적으로 처리한다.
 {
 	WSABUF wb;
 	DWORD dwFlags = 0;
@@ -431,12 +439,15 @@ void CFaceTheSunServerGUIDlg::BeginRecvStart(UserDataStream* us)
 		if (err != WSA_IO_PENDING)
 		{
 			std::cout << "WSARecv" << err << std::endl;
-			CancelThreadpoolIo(us->ptpRecvSend);
+			us->Error = true;
 		}
 	}
 }
 
-void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
+void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us) // 직렬화까지 성공시키면 데이터별로 맞게 함수를 전달할것
+// 항상 데이터를 선 수신후 반드시 발송시키는 형태이기 때문에, 강제 종료가 일어나지 않는 이상 클라측 구현에서도 1번 보내면 1번은 받을수 있도록 구현해둘것 최소한 확인 응답 형식으로라도
+// 일반 send를 사용했는데 받는 것은 비동기적으로 처리한다 할지라도 보내는것은 데이터를 수신후 동기적으로 바로 보내기위함. 다만 스레드풀에서 send가 떨어지므로 논블록된다.
+// 데이터를 받는 것은 클라측에서 결과 등에 따라 맘대로 보내두되기때문에 비동기적으로 호출해도되지만, 데이터 전송은 반드시 즉시 보내게하여서 클라가 원할한 통신을 유지하도록한다.
 {
 	int err = send(us->sock, us->buffer, sizeof(us->buffer), 0);
 	if (err == SOCKET_ERROR)
@@ -446,22 +457,15 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 	}
 }
 
-void CFaceTheSunServerGUIDlg::CleanUpAllSocketAndTP()
+void CFaceTheSunServerGUIDlg::CleanUpAllSocketAndTP() // 모든 스레드풀, 소켓, Raw포인터 해제
 {
+	EditServerStatus.SetWindowTextW(_T("서버 종료중입니다. 잠시만 기다려주세요"));
 	for (auto a : USArray)
 	{
 		if (a != nullptr)
 		{
-			if (a->sock != INVALID_SOCKET)
-			{
-				CancelIoEx((HANDLE)a->sock, NULL);
-				if (a->ptpRecvSend != nullptr)
-				{
-					WaitForThreadpoolIoCallbacks(a->ptpRecvSend, TRUE);
-					closesocket(a->sock);
-					CloseThreadpoolIo(a->ptpRecvSend);
-				}
-			}
+			a->Stop = true;
+			closesocket(a->sock);
 			delete a;
 		}
 	}
@@ -469,6 +473,7 @@ void CFaceTheSunServerGUIDlg::CleanUpAllSocketAndTP()
 
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonShutdown() //유저 연결 종료
 {
+	// ID를 키로 받은 소켓 맵을 통해서 강제로 연결 종료가 필요한 유저는 셧다운 걸어버린다.
 	// TODO: Add your control notification handler code here
 	if (AfxMessageBox(_T("정말로 해당유저의 연결을 종료시키시겠습니까?"), MB_YESNO | MB_ICONSTOP) == IDYES)
 	{
@@ -492,5 +497,16 @@ void CFaceTheSunServerGUIDlg::OnBnClickedButtonShutdown() //유저 연결 종료
 		closesocket(ConnectedSocketSet[temp]);
 		ConnectedSocketSet.erase(temp);
 		AfxMessageBox(_T("정상적으로 연결 종료되었습니다."));
+	}
+}
+
+
+void CFaceTheSunServerGUIDlg::OnBnClickedRfreshuser() //유저목록 수동 동기화 
+{
+	// TODO: Add your control notification handler code here
+	ConnectUserList.ResetContent();
+	for (auto a : OnlineUsers)
+	{
+		ConnectUserList.AddString(a);
 	}
 }

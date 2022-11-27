@@ -5,6 +5,7 @@
 #include <map>
 #include <vector>
 #include <queue>
+#include <set>
 #pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console")
 class UserDataStream : OVERLAPPED // overlap
 {
@@ -16,6 +17,8 @@ public:
 	char ID[4096]; // ID 연결 끊긴 소켓 관리용
 	PTP_IO ptpRecvSend; // SendRecv 전용 스레드풀
 	bool Reuse = false;
+	bool Error = false;
+	bool Stop = false;
 };
 
 
@@ -64,7 +67,9 @@ public:
 	std::map<CString, SOCKET> ConnectedSocketSet; // 연결된 소켓들 관리용 키는 ID, 값은 소켓
 	std::vector<UserDataStream*>USArray; // UserData보관하다가 나중에 TP관리용
 	std::queue<SOCKET>DisconnectedSocket; // 연결이 끊긴 소켓들을 보관했다가 재사용하는데 초점을 둔다.
+	std::set<CString>OnlineUsers; // ID는 유니크하므로 SET으로 객체 생성
 	CRITICAL_SECTION SyncroData; // 소켓이나 UserDataStream객체 삽입 삭제시 에러방지를 위한 임계영역
 	CButton ServerOnOffButton; // 서버 온오프
-	afx_msg void OnBnClickedButtonShutdown();
+	afx_msg void OnBnClickedButtonShutdown(); // 상대방 접속 종료
+	afx_msg void OnBnClickedRfreshuser(); // 수동조작으로 접속 유저 목록 동기화
 };

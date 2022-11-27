@@ -9,10 +9,11 @@
 #define IDP_SOCKETS_INIT_FAILED         103
 #define IDR_MAINFRAME                   128
 #define IDServerOnOff                   1000
+#define IDServerOnOff2                  1001
+#define IDRfreshUser                    1001
 #define IDC_EDIT_SERVERSTATUS           1003
 #define IDC_LIST_USER                   1004
 #define IDC_BUTTON_SHUTDOWN             1005
-#define IDC_BUTTON3                     1006
 #define IDC_BUTTON_MODIFY               1006
 #define IDC_LIST3                       1007
 
