@@ -6,6 +6,7 @@
 #include <vector>
 #include <queue>
 #include <set>
+#include <afxdb.h> // DB용
 #pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console")
 class UserDataStream : OVERLAPPED // overlap
 {
@@ -13,6 +14,7 @@ public:
 	SOCKET sock; // accept로 받은 소켓
 	PVOID CustomOrder = nullptr; //명령 및 명령 길이
 	int OrderLen = 0;
+	char addr[INET_ADDRSTRLEN]; //주소
 	char buffer[4096]; // 명령을 받는 버퍼
 	char ID[4096]; // ID 연결 끊긴 소켓 관리용
 	PTP_IO ptpRecvSend; // SendRecv 전용 스레드풀
@@ -72,4 +74,9 @@ public:
 	CButton ServerOnOffButton; // 서버 온오프
 	afx_msg void OnBnClickedButtonShutdown(); // 상대방 접속 종료
 	afx_msg void OnBnClickedRfreshuser(); // 수동조작으로 접속 유저 목록 동기화
+	afx_msg void OnTimer(UINT_PTR nIDEvent); //유저목록 자동 갱신을 위한 타이머 2초마다
+	CDatabase FaceTheSunDB; // db
+	CRecordset FaceTheSunRecordSet; // record
+	afx_msg void OnDestroy();
+	afx_msg void OnBnClickedButtonModify();
 };

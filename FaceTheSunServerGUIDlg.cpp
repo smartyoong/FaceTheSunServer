@@ -73,6 +73,9 @@ BEGIN_MESSAGE_MAP(CFaceTheSunServerGUIDlg, CDialogEx)
 	ON_BN_CLICKED(IDServerOnOff, &CFaceTheSunServerGUIDlg::OnClickedIdserveronoff)
 	ON_BN_CLICKED(IDC_BUTTON_SHUTDOWN, &CFaceTheSunServerGUIDlg::OnBnClickedButtonShutdown)
 	ON_BN_CLICKED(IDRfreshUser, &CFaceTheSunServerGUIDlg::OnBnClickedRfreshuser)
+	ON_WM_TIMER()
+	ON_WM_DESTROY()
+	ON_BN_CLICKED(IDC_BUTTON_MODIFY, &CFaceTheSunServerGUIDlg::OnBnClickedButtonModify)
 END_MESSAGE_MAP()
 
 
@@ -118,6 +121,7 @@ BOOL CFaceTheSunServerGUIDlg::OnInitDialog()
 		AfxMessageBox(L"서버 초기화 오류");
 		return FALSE;
 	}
+	FaceTheSunDB.OpenEx(_T("DSN=Localhost"));
 	return TRUE;  // 포커스를 컨트롤에 설정하지 않으면 TRUE를 반환합니다.
 }
 
@@ -186,12 +190,14 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 		DeleteCriticalSection(&SyncroData);
 		WSACleanup();
 		EditServerStatus.SetWindowTextW(_T("서버가 정상적으로 종료되었습니다"));
+		KillTimer(0);
 		IsServerOn = false;
 		ServerOnOffButton.SetWindowTextW(_T("ServerOn"));
 	}
 	else
 	{
 		InitializeCriticalSection(&SyncroData);
+		SetTimer(0, 2000, NULL); // 타이머는 1개만 있을거니까 ID는 아무거나 설정을하고, 콜백함수도 기본함수를 사용한다.
 		ListenSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // 소켓 생성
 		sockaddr_in ServerAddr;
 		ServerAddr.sin_family = AF_INET;
@@ -281,14 +287,12 @@ void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANC
 	ZeroMemory(&saRem, sizeof(SOCKADDR_IN));
 	saLoc = *((PSOCKADDR_IN)lsm);
 	saRem = *((PSOCKADDR_IN)rsm);
-	//char addr[INET_ADDRSTRLEN]; ip받아오는 건데 만약 필요하면 주석 해제할것 다만 아이디로 대체할 예정
-	//a += inet_ntop(AF_INET, &saRem.sin_addr.S_un.S_addr, addr, sizeof(addr));
-	//a += " ";
 	if (us->sock == INVALID_SOCKET) // 클라이언트가 정상인지 한번 더 체크
 		AfxMessageBox(_T("AcceptSocketFail"));
 	EnterCriticalSection(&dlg->SyncroData);
 	us->ID[NumOfBytesTrans] = '\0';
 	CString a(us->ID);
+	inet_ntop(AF_INET, &saRem.sin_addr.S_un.S_addr, us->addr, sizeof(us->addr));
 	dlg->OnlineUsers.insert(a);
 	dlg->ConnectedSocketSet.insert(std::make_pair(a,us->sock)); // ID와 관련된 소켓을 맵에 집어넣는다. (해당 아이디의 소켓의 연결을 끊기위함)
 	LeaveCriticalSection(&dlg->SyncroData);
@@ -508,5 +512,48 @@ void CFaceTheSunServerGUIDlg::OnBnClickedRfreshuser() //유저목록 수동 동�
 	for (auto a : OnlineUsers)
 	{
 		ConnectUserList.AddString(a);
+	}
+}
+
+
+void CFaceTheSunServerGUIDlg::OnTimer(UINT_PTR nIDEvent) // 어차피 타이머는 1개 이므로 ID는 무시
+{
+	// TODO: Add your message handler code here and/or call default
+	ConnectUserList.ResetContent();
+	for (auto a : OnlineUsers)
+	{
+		ConnectUserList.AddString(a);
+	}
+	CDialogEx::OnTimer(nIDEvent);
+}
+
+
+void CFaceTheSunServerGUIDlg::OnDestroy() // db종료용
+{
+	CDialogEx::OnDestroy();
+	FaceTheSunRecordSet.Close();
+	FaceTheSunDB.Close();
+	// TODO: Add your message handler code here
+}
+
+
+void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify() // 내일 select 구문 및 여러가지를 손볼예정, tool box에서 지금 에러터져서 미치겠다.
+{
+	// TODO: Add your control notification handler code here
+	FaceTheSunRecordSet.Open(CRecordset::dynamic, _T("SELECT * FROM USERDATA WHERE ID = 'hello'"));
+	CString str;
+	while (!FaceTheSunRecordSet.IsEOF())
+	{
+		FaceTheSunRecordSet.GetFieldValue(short(0), str);
+		ConnectUserList.AddString(str);
+		FaceTheSunRecordSet.GetFieldValue(short(1), str);
+		ConnectUserList.AddString(str);
+		FaceTheSunRecordSet.GetFieldValue(short(2), str);
+		ConnectUserList.AddString(str);
+		FaceTheSunRecordSet.GetFieldValue(short(3), str);
+		ConnectUserList.AddString(str);
+		FaceTheSunRecordSet.GetFieldValue(short(4), str);
+		ConnectUserList.AddString(str);
+		FaceTheSunRecordSet.MoveNext();
 	}
 }
