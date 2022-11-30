@@ -64,6 +64,8 @@ void CFaceTheSunServerGUIDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_EDIT_SERVERSTATUS, EditServerStatus);
 	DDX_Control(pDX, IDC_LIST_USER, ConnectUserList);
 	DDX_Control(pDX, IDServerOnOff, ServerOnOffButton);
+	DDX_Control(pDX, IDC_LISTUSERDATA, ListUserData);
+	DDX_Control(pDX, IDC_EDITUSERDATA, EditUserData);
 }
 
 BEGIN_MESSAGE_MAP(CFaceTheSunServerGUIDlg, CDialogEx)
@@ -76,6 +78,8 @@ BEGIN_MESSAGE_MAP(CFaceTheSunServerGUIDlg, CDialogEx)
 	ON_WM_TIMER()
 	ON_WM_DESTROY()
 	ON_BN_CLICKED(IDC_BUTTON_MODIFY, &CFaceTheSunServerGUIDlg::OnBnClickedButtonModify)
+	ON_BN_CLICKED(IDC_BUTTONUSERDATA, &CFaceTheSunServerGUIDlg::OnBnClickedButtonuserdata)
+	ON_LBN_SELCHANGE(IDC_LISTUSERDATA, &CFaceTheSunServerGUIDlg::OnLbnSelchangeListuserdata)
 END_MESSAGE_MAP()
 
 
@@ -121,7 +125,18 @@ BOOL CFaceTheSunServerGUIDlg::OnInitDialog()
 		AfxMessageBox(L"서버 초기화 오류");
 		return FALSE;
 	}
-	FaceTheSunDB.OpenEx(_T("DSN=Localhost"));
+	try
+	{
+		if (FaceTheSunDB.OpenEx(_T("DSN=Localhost")))
+		{
+			FaceTheSunRecordSet = new CRecordset(&FaceTheSunDB);
+		}
+	}
+	catch (CException* e)
+	{
+		e->ReportError();
+	}
+	InsertDBField();
 	return TRUE;  // 포커스를 컨트롤에 설정하지 않으면 TRUE를 반환합니다.
 }
 
@@ -197,7 +212,7 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 	else
 	{
 		InitializeCriticalSection(&SyncroData);
-		SetTimer(0, 2000, NULL); // 타이머는 1개만 있을거니까 ID는 아무거나 설정을하고, 콜백함수도 기본함수를 사용한다.
+		SetTimer(0, 60000, NULL); // 타이머는 1개만 있을거니까 ID는 아무거나 설정을하고, 콜백함수도 기본함수를 사용한다.
 		ListenSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // 소켓 생성
 		sockaddr_in ServerAddr;
 		ServerAddr.sin_family = AF_INET;
@@ -218,7 +233,7 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 		}
 		EditServerStatus.SetWindowTextW(_T("서버설정 완료"));
 		UserDataStream* us = new UserDataStream; // OverLadpped확장 구조체로 필요한 정보를 송수신할 예정 자세한건 헤더파일 참고
-		ZeroMemory(us, sizeof(UserDataStream));
+		us->Initialize();
 		// 위의 변수 생성자에 초기화 함수가 존재하므로 참고할때에 반드시 OVERLAPPED구조체를 초기화 시켜주지 않으면 에러가 남
 		acceptTPIO = CreateThreadpoolIo((HANDLE)ListenSock, TPAcceptCallBackFunc, this, NULL); //Dlg 갱신용으로 this 포인터 전송
 		if (acceptTPIO == NULL)
@@ -337,9 +352,7 @@ void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE insta
 		if (NumOfBytesTrans>0) //바로 이전에 데이터를 전송했으니 받아야한다.
 		{
 			us->buffer[NumOfBytesTrans] = '\0';
-			CString a;
-			a += us->buffer;
-			dlg->ConnectUserList.AddString(a); // 테스트용으로 여기에 글을 보여주지만 나중에는 데이터 송수신 함수를 작성해야함
+			CString a(us->buffer);
 			dlg->SendKindOfData(us); //상황에 맞게 데이터를 전송하도록 직렬화 함수 필수
 			StartThreadpoolIo(tio);
 			dlg->BeginRecvStart(us); // 데이터 받기 실행
@@ -385,7 +398,7 @@ void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE insta
 void CFaceTheSunServerGUIDlg::BeginAcceptStart() // 아마도 이미 사용되었던 스레드 풀에서 재생성할려고 해서 그런것 같은데 확인필요 도저히 못고칠것 같은경우 그냥 삭제하도록
 {
 	UserDataStream* uss = new UserDataStream;
-	ZeroMemory(uss, sizeof(UserDataStream));
+	uss->Initialize();
 	if (DisconnectedSocket.size() > 0) // 재사용 가능한 소켓이 있을경우 사용
 	{
 		EnterCriticalSection(&SyncroData);
@@ -531,29 +544,101 @@ void CFaceTheSunServerGUIDlg::OnTimer(UINT_PTR nIDEvent) // 어차피 타이머�
 void CFaceTheSunServerGUIDlg::OnDestroy() // db종료용
 {
 	CDialogEx::OnDestroy();
-	FaceTheSunRecordSet.Close();
-	FaceTheSunDB.Close();
+	if (FaceTheSunRecordSet->IsOpen())
+		FaceTheSunRecordSet->Close();
+	if(FaceTheSunDB.IsOpen())
+		FaceTheSunDB.Close();
+	delete FaceTheSunRecordSet;
 	// TODO: Add your message handler code here
 }
 
+void CFaceTheSunServerGUIDlg::SignInDB()
+{
+}
 
-void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify() // 내일 select 구문 및 여러가지를 손볼예정, tool box에서 지금 에러터져서 미치겠다.
+void CFaceTheSunServerGUIDlg::LogIn()
+{
+}
+
+void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()
 {
 	// TODO: Add your control notification handler code here
-	FaceTheSunRecordSet.Open(CRecordset::dynamic, _T("SELECT * FROM USERDATA WHERE ID = 'hello'"));
-	CString str;
-	while (!FaceTheSunRecordSet.IsEOF())
+	CString temp = _T("SELECT * FROM USERDATA WHERE ID = '");
+	CString cs;
+	ConnectUserList.GetText(ConnectUserList.GetCurSel(),cs);
+	temp += cs + _T("'");
+	if (FaceTheSunRecordSet->Open(CRecordset::dynamic, temp))
 	{
-		FaceTheSunRecordSet.GetFieldValue(short(0), str);
-		ConnectUserList.AddString(str);
-		FaceTheSunRecordSet.GetFieldValue(short(1), str);
-		ConnectUserList.AddString(str);
-		FaceTheSunRecordSet.GetFieldValue(short(2), str);
-		ConnectUserList.AddString(str);
-		FaceTheSunRecordSet.GetFieldValue(short(3), str);
-		ConnectUserList.AddString(str);
-		FaceTheSunRecordSet.GetFieldValue(short(4), str);
-		ConnectUserList.AddString(str);
-		FaceTheSunRecordSet.MoveNext();
+		for (int i = 0; i < FaceTheSunRecordSet->GetODBCFieldCount(); ++i)
+		{
+			CString stemp;
+			FaceTheSunRecordSet->GetFieldValue(i, stemp);
+			ListUserData.AddString(UserDataField[i] + stemp);
+		}
+	}
+	FaceTheSunRecordSet->Close();
+}
+
+
+void CFaceTheSunServerGUIDlg::OnBnClickedButtonuserdata() // 앞으로 추가될 목록이 많으므로 지속적으로 각 상황에 맞게 추가하도록 유도
+{
+	// TODO: Add your control notification handler code here
+	CString temp;
+	temp = UserDataField[ListUserData.GetCurSel()];
+	temp.Replace(':','=');
+	CString ttemp;
+	EditUserData.GetWindowTextW(ttemp);
+	int index = ListUserData.GetCurSel();
+	if (index == 0) // ID
+	{
+		temp += "'";
+		temp += ttemp;
+		temp += "'";
+		CString Sql(_T("UPDATE USERDATA SET "));
+		Sql += temp;
+		FaceTheSunDB.BeginTrans();
+		FaceTheSunDB.ExecuteSQL(Sql);
+		FaceTheSunDB.CommitTrans();
+	}
+	else if (index == 4 || index == 5) // IP or PassWord
+	{
+		AfxMessageBox(_T("Ip 혹은 비밀번호는 수정 할 수 없습니다."));
+	}
+	else // etc
+	{
+		temp += ttemp;
+		CString Sql(_T("UPDATE USERDATA SET "));
+		Sql += temp;
+		FaceTheSunDB.BeginTrans();
+		FaceTheSunDB.ExecuteSQL(Sql);
+		FaceTheSunDB.CommitTrans();
+	}
+	AfxMessageBox(_T("처리 완료!"));
+	ListUserData.ResetContent();
+}
+
+void CFaceTheSunServerGUIDlg::InsertDBField()
+{
+	UserDataField.insert(std::make_pair(0, _T("ID : ")));
+	UserDataField.insert(std::make_pair(1, _T("Level : ")));
+	UserDataField.insert(std::make_pair(2, _T("CurrentEXP : ")));
+	UserDataField.insert(std::make_pair(3, _T("Point : ")));
+	UserDataField.insert(std::make_pair(4, _T("IP : ")));
+	UserDataField.insert(std::make_pair(5, _T("Password : ")));
+}
+
+
+void CFaceTheSunServerGUIDlg::OnLbnSelchangeListuserdata()
+{
+	CString temp;
+	ListUserData.GetText(ListUserData.GetCurSel(), temp);
+	if (temp.Find(UserDataField[ListUserData.GetCurSel()]) != -1)
+	{
+		temp.Delete(0, UserDataField[ListUserData.GetCurSel()].GetLength());
+		EditUserData.SetWindowTextW(temp);
+	}
+	else
+	{
+		AfxMessageBox(_T("찾기 실패"));
 	}
 }
