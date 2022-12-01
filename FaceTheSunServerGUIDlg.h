@@ -6,6 +6,8 @@
 #include <vector>
 #include <queue>
 #include <set>
+#include "MakePackToBuffer.h"
+#include "Packet.h"
 #pragma comment(linker, "/entry:WinMainCRTStartup /subsystem:console")
 class UserDataStream : OVERLAPPED // overlap
 {
@@ -79,6 +81,9 @@ private: // 객체 컨테이너
 	std::set<CString>OnlineUsers; // ID는 유니크하므로 SET으로 객체 생성
 	std::map<int, CString> UserDataField; // db 필드명
 
+private:
+	
+
 public: //실행 함수들
 	void BeginAcceptStart(); // accept 시키는 함수
 	void BeginRecvStart(UserDataStream* us); // Recv시키는 함수
@@ -86,7 +91,7 @@ public: //실행 함수들
 	void CleanUpAllSocketAndTP(); // 모든 클라이언트 소켓 및 데이터, 스레드풀 삭제용
 	void InsertDBField(); // db필드명 초기화
 	void SignInDB(); // 회원가입 함수
-	void LogIn(); // 로그인
+	void LogIn(PackToBuffer* pb, UserDataStream* us); // 로그인
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프

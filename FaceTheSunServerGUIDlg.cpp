@@ -352,7 +352,6 @@ void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE insta
 		if (NumOfBytesTrans>0) //바로 이전에 데이터를 전송했으니 받아야한다.
 		{
 			us->buffer[NumOfBytesTrans] = '\0';
-			CString a(us->buffer);
 			dlg->SendKindOfData(us); //상황에 맞게 데이터를 전송하도록 직렬화 함수 필수
 			StartThreadpoolIo(tio);
 			dlg->BeginRecvStart(us); // 데이터 받기 실행
@@ -466,12 +465,19 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us) // 직렬화까
 // 일반 send를 사용했는데 받는 것은 비동기적으로 처리한다 할지라도 보내는것은 데이터를 수신후 동기적으로 바로 보내기위함. 다만 스레드풀에서 send가 떨어지므로 논블록된다.
 // 데이터를 받는 것은 클라측에서 결과 등에 따라 맘대로 보내두되기때문에 비동기적으로 호출해도되지만, 데이터 전송은 반드시 즉시 보내게하여서 클라가 원할한 통신을 유지하도록한다.
 {
-	int err = send(us->sock, us->buffer, sizeof(us->buffer), 0);
-	if (err == SOCKET_ERROR)
+	PackToBuffer* pb = new PackToBuffer(4096);
+	pb->SetBuffer(us->buffer, sizeof(us->buffer));
+	int id = 0;
+	*pb >> &id;
+	switch (id)
 	{
-		std::cout << WSAGetLastError() << std::endl;
-		CancelThreadpoolIo(us->ptpRecvSend);
+	case PacketID::TryLogIn :
+		LogIn(pb,us);
+		break;
+	case PacketID::LogInResult :
+		break;
 	}
+	delete pb;
 }
 
 void CFaceTheSunServerGUIDlg::CleanUpAllSocketAndTP() // 모든 스레드풀, 소켓, Raw포인터 해제
@@ -556,8 +562,45 @@ void CFaceTheSunServerGUIDlg::SignInDB()
 {
 }
 
-void CFaceTheSunServerGUIDlg::LogIn()
+void CFaceTheSunServerGUIDlg::LogIn(PackToBuffer* pb, UserDataStream* us)
 {
+	std::string* password = new std::string;
+	std::string* ID = new std::string;
+	*pb >> ID;
+	*pb >> password;
+	CString temp = _T("select (case when count(*)=1 then 'ok' else 'no' end) from userdata where ID = '");
+	CString temp2 = _T("' and PWDCOMPARE('");
+	temp += ID->c_str();
+	temp += temp2;
+	CString sql = _T("',password) =1");
+	temp += password->c_str();
+	temp += sql;
+	CString stemp;
+	if (FaceTheSunRecordSet->Open(CRecordset::dynamic, temp))
+	{
+		FaceTheSunRecordSet->GetFieldValue(short(0), stemp);
+	}
+	FaceTheSunRecordSet->Close();
+	if (stemp == "ok")
+	{
+		*pb << PacketID::LogInResult << true;
+		int err = send(us->sock,pb->GetBuffer() , sizeof(pb->GetBuffer()), 0);
+		if (err == SOCKET_ERROR)
+		{
+			std::cout << WSAGetLastError() << std::endl;
+			CancelThreadpoolIo(us->ptpRecvSend);
+		}
+	}
+	else
+	{
+		*pb << PacketID::LogInResult << false;
+		int err = send(us->sock, pb->GetBuffer(), sizeof(pb->GetBuffer()), 0);
+		if (err == SOCKET_ERROR)
+		{
+			std::cout << WSAGetLastError() << std::endl;
+			CancelThreadpoolIo(us->ptpRecvSend);
+		}
+	}
 }
 
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()
