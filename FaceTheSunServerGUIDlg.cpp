@@ -266,7 +266,7 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 			std::cout << WSAGetLastError() << std::endl;
 		}
 		us->sock = ClientSocket; // 무조건 처음에는 소켓을 생성하니 Disconnected 소켓을 볼필요가 없다
-		if (!pAcceptEX(ListenSock, ClientSocket, us->ID, 16, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)us)) 
+		if (!pAcceptEX(ListenSock, ClientSocket, us->ID, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)us)) 
 			// 현재는 수신바이트를 16으로해두고 DB랑 연결후에 수신바이트 크기를 정해서 지정할 예정
 		{
 			int err = WSAGetLastError();
@@ -295,7 +295,7 @@ void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANC
 	LeaveCriticalSection(&dlg->SyncroData);
 	PSOCKADDR lsm, rsm;
 	int nsiloc, nsirem = 0;
-	dlg->pAcceptAddrs(us->ID, 16, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN)+16, &lsm, &nsiloc, &rsm, &nsirem); //주소 구해오기
+	dlg->pAcceptAddrs(us->ID, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN)+16, &lsm, &nsiloc, &rsm, &nsirem); //주소 구해오기
 	SOCKADDR_IN saLoc;
 	SOCKADDR_IN saRem;
 	ZeroMemory(&saLoc, sizeof(SOCKADDR_IN));
@@ -583,7 +583,7 @@ void CFaceTheSunServerGUIDlg::LogIn(PackToBuffer* pb, UserDataStream* us)
 	FaceTheSunRecordSet->Close();
 	if (stemp == "ok")
 	{
-		*pb << PacketID::LogInResult << true;
+		*pb << PacketID::LogInResult << int(1);
 		int err = send(us->sock,pb->GetBuffer() , sizeof(pb->GetBuffer()), 0);
 		if (err == SOCKET_ERROR)
 		{
@@ -593,7 +593,7 @@ void CFaceTheSunServerGUIDlg::LogIn(PackToBuffer* pb, UserDataStream* us)
 	}
 	else
 	{
-		*pb << PacketID::LogInResult << false;
+		*pb << PacketID::LogInResult << int(0);
 		int err = send(us->sock, pb->GetBuffer(), sizeof(pb->GetBuffer()), 0);
 		if (err == SOCKET_ERROR)
 		{
