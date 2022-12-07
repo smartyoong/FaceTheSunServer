@@ -80,6 +80,7 @@ private: // 객체 컨테이너
 	std::queue<SOCKET>DisconnectedSocket; // 연결이 끊긴 소켓들을 보관했다가 재사용하는데 초점을 둔다.
 	std::set<CString>OnlineUsers; // ID는 유니크하므로 SET으로 객체 생성
 	std::map<int, CString> UserDataField; // db 필드명
+	std::map<CString, CString> UserIPField; // ID당 IP 수집용
 
 private:
 	
@@ -90,8 +91,9 @@ public: //실행 함수들
 	void SendKindOfData(UserDataStream* us); // 상황별Send
 	void CleanUpAllSocketAndTP(); // 모든 클라이언트 소켓 및 데이터, 스레드풀 삭제용
 	void InsertDBField(); // db필드명 초기화
-	void SignInDB(); // 회원가입 함수
+	void SignInDB(PackToBuffer* pb, UserDataStream* us); // 회원가입 함수
 	void LogIn(PackToBuffer* pb, UserDataStream* us); // 로그인
+	void IDCheck(PackToBuffer* pb, UserDataStream* us); //ID체크
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프

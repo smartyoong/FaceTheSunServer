@@ -394,7 +394,7 @@ void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE insta
 	}
 }
 
-void CFaceTheSunServerGUIDlg::BeginAcceptStart() // 아마도 이미 사용되었던 스레드 풀에서 재생성할려고 해서 그런것 같은데 확인필요 도저히 못고칠것 같은경우 그냥 삭제하도록
+void CFaceTheSunServerGUIDlg::BeginAcceptStart() 
 {
 	UserDataStream* uss = new UserDataStream;
 	uss->Initialize();
@@ -404,7 +404,7 @@ void CFaceTheSunServerGUIDlg::BeginAcceptStart() // 아마도 이미 사용되�
 		uss->sock = DisconnectedSocket.front();
 		uss->Reuse = true;
 		LeaveCriticalSection(&SyncroData);
-		if (!pAcceptEX(ListenSock, uss->sock, uss->ID, 16, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)uss))
+		if (!pAcceptEX(ListenSock, uss->sock, uss->ID, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)uss))
 			// 현재는 수신바이트를 0으로해두고 DB랑 연결후에 수신바이트 크기를 정해서 지정할 예정
 		{
 			int err = WSAGetLastError();
@@ -428,7 +428,7 @@ void CFaceTheSunServerGUIDlg::BeginAcceptStart() // 아마도 이미 사용되�
 			AfxMessageBox(_T("BeginAccept Socket Err"));
 		}
 		uss->sock = ClientSocket;
-		if (!pAcceptEX(ListenSock, uss->sock, uss->ID, 16, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)uss))
+		if (!pAcceptEX(ListenSock, uss->sock, uss->ID, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, nullptr, (LPOVERLAPPED)uss))
 			// 현재는 수신바이트를 0으로해두고 DB랑 연결후에 수신바이트 크기를 정해서 지정할 예정
 		{
 			int err = WSAGetLastError();
@@ -476,6 +476,20 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us) // 직렬화까
 		break;
 	case PacketID::LogInResult :
 		break;
+	case PacketID::TrySignIn:
+		SignInDB(pb, us);
+		break;
+	case PacketID::SignInResult:
+		break;
+	case PacketID::TryID:
+		IDCheck(pb, us);
+		break;
+	case PacketID::IDResult :
+		break;
+	default :
+		std::cout << "ErrorOrder" << std::endl;
+		break;
+
 	}
 	delete pb;
 }
@@ -558,8 +572,34 @@ void CFaceTheSunServerGUIDlg::OnDestroy() // db종료용
 	// TODO: Add your message handler code here
 }
 
-void CFaceTheSunServerGUIDlg::SignInDB()
+void CFaceTheSunServerGUIDlg::SignInDB(PackToBuffer* pb, UserDataStream* us)
 {
+	std::string* ID;
+	std::string* Password;
+	ID = new std::string;
+	Password = new std::string;
+	*pb >> ID >> Password;
+	EnterCriticalSection(&SyncroData);
+	UserIPField.insert(std::make_pair(CString(ID->c_str()), CString(us->addr)));
+	LeaveCriticalSection(&SyncroData);
+	CString SQL = _T("INSERT INTO usertable (ID,IP,password), VALUES( '");
+	SQL += CString(ID->c_str());
+	SQL += _T("', '");
+	SQL += UserIPField[CString(ID->c_str())];
+	SQL += _T("', PWDENCRYPT('");
+	SQL += CString(Password->c_str());
+	SQL += _T("'))");
+	FaceTheSunDB.BeginTrans();
+	FaceTheSunDB.ExecuteSQL(SQL);
+	FaceTheSunDB.CommitTrans();
+	*pb << PacketID::SignInResult << 1;
+	int err = send(us->sock, pb->GetBuffer(), sizeof(pb->GetBuffer()), 0);
+	if (err == SOCKET_ERROR)
+	{
+		std::cout << WSAGetLastError() << std::endl;
+		AfxMessageBox(_T("SignInResultSend Error"));
+		CancelThreadpoolIo(us->ptpRecvSend);
+	}
 }
 
 void CFaceTheSunServerGUIDlg::LogIn(PackToBuffer* pb, UserDataStream* us)
@@ -601,6 +641,47 @@ void CFaceTheSunServerGUIDlg::LogIn(PackToBuffer* pb, UserDataStream* us)
 			CancelThreadpoolIo(us->ptpRecvSend);
 		}
 	}
+}
+
+void CFaceTheSunServerGUIDlg::IDCheck(PackToBuffer* pb, UserDataStream* us)
+{
+	std::string* ID = new std::string;
+	*pb >> ID;
+	CString SQL = _T("SELECT (CASE WHEN ID = '");
+	SQL += ID->c_str();
+	SQL += _T("' THEN 'ok' ELSE 'no' END) FROM userdata");
+	if (FaceTheSunRecordSet->Open(CRecordset::dynamic, SQL))
+	{
+		CString temp;
+		FaceTheSunRecordSet->GetFieldValue(short(0), temp);
+		if (temp == "ok") //중복
+		{
+			*pb << PacketID::IDResult << int(0);
+			int err = send(us->sock, pb->GetBuffer(), sizeof(pb->GetBuffer()), 0);
+			if (err == SOCKET_ERROR)
+			{
+				std::cout << WSAGetLastError() << std::endl;
+				AfxMessageBox(_T("전송 오류"));
+				CancelThreadpoolIo(us->ptpRecvSend);
+			}
+		}
+		else //중복 아님
+		{
+			*pb << PacketID::IDResult << int(1);
+			int err = send(us->sock, pb->GetBuffer(), sizeof(pb->GetBuffer()), 0);
+			if (err == SOCKET_ERROR)
+			{
+				std::cout << WSAGetLastError() << std::endl;
+				AfxMessageBox(_T("전송 오류"));
+				CancelThreadpoolIo(us->ptpRecvSend);
+			}
+		}
+	}
+	else
+	{
+		AfxMessageBox(_T("ID 체크 레코드셋 읽기 실패"));
+	}
+	FaceTheSunRecordSet->Close();
 }
 
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()
