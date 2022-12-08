@@ -579,19 +579,23 @@ void CFaceTheSunServerGUIDlg::SignInDB(PackToBuffer* pb, UserDataStream* us)
 	ID = new std::string;
 	Password = new std::string;
 	*pb >> ID >> Password;
-	EnterCriticalSection(&SyncroData);
-	UserIPField.insert(std::make_pair(CString(ID->c_str()), CString(us->addr)));
-	LeaveCriticalSection(&SyncroData);
-	CString SQL = _T("INSERT INTO usertable (ID,IP,password), VALUES( '");
+	CString SQL = _T("INSERT INTO userdata (ID,IP,password) VALUES( '");
 	SQL += CString(ID->c_str());
 	SQL += _T("', '");
-	SQL += UserIPField[CString(ID->c_str())];
+	SQL += us->addr;
 	SQL += _T("', PWDENCRYPT('");
 	SQL += CString(Password->c_str());
 	SQL += _T("'))");
-	FaceTheSunDB.BeginTrans();
-	FaceTheSunDB.ExecuteSQL(SQL);
-	FaceTheSunDB.CommitTrans();
+	try
+	{
+		FaceTheSunDB.BeginTrans();
+		FaceTheSunDB.ExecuteSQL(SQL);
+		FaceTheSunDB.CommitTrans();
+	}
+	catch (CException* e)
+	{
+		e->ReportError();
+	}
 	*pb << PacketID::SignInResult << 1;
 	int err = send(us->sock, pb->GetBuffer(), sizeof(pb->GetBuffer()), 0);
 	if (err == SOCKET_ERROR)
@@ -616,6 +620,9 @@ void CFaceTheSunServerGUIDlg::LogIn(PackToBuffer* pb, UserDataStream* us)
 	temp += password->c_str();
 	temp += sql;
 	CString stemp;
+	EnterCriticalSection(&SyncroData);
+	UserIPField.insert(std::make_pair(CString(ID->c_str()), CString(us->addr)));
+	LeaveCriticalSection(&SyncroData);
 	if (FaceTheSunRecordSet->Open(CRecordset::dynamic, temp))
 	{
 		FaceTheSunRecordSet->GetFieldValue(short(0), stemp);
