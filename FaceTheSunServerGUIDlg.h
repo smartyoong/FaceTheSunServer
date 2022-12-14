@@ -76,6 +76,7 @@ private: // MFC관련 변수
 
 private: // 객체 컨테이너
 	std::map<CString, SOCKET> ConnectedSocketSet; // 연결된 소켓들 관리용 키는 ID, 값은 소켓
+	std::map<SOCKET, CString> FindIDBySocket; // 나중에 Disconnect시 역으로 관리용
 	std::vector<UserDataStream*>USArray; // UserData보관하다가 나중에 TP관리용
 	std::queue<SOCKET>DisconnectedSocket; // 연결이 끊긴 소켓들을 보관했다가 재사용하는데 초점을 둔다.
 	std::set<CString>OnlineUsers; // ID는 유니크하므로 SET으로 객체 생성

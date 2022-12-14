@@ -212,7 +212,7 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 	else
 	{
 		InitializeCriticalSection(&SyncroData);
-		SetTimer(0, 60000, NULL); // 타이머는 1개만 있을거니까 ID는 아무거나 설정을하고, 콜백함수도 기본함수를 사용한다.
+		SetTimer(0, 10000, NULL); // 타이머는 1개만 있을거니까 ID는 아무거나 설정을하고, 콜백함수도 기본함수를 사용한다.
 		ListenSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // 소켓 생성
 		sockaddr_in ServerAddr;
 		ServerAddr.sin_family = AF_INET;
@@ -305,11 +305,7 @@ void CALLBACK CFaceTheSunServerGUIDlg::TPAcceptCallBackFunc(PTP_CALLBACK_INSTANC
 	if (us->sock == INVALID_SOCKET) // 클라이언트가 정상인지 한번 더 체크
 		AfxMessageBox(_T("AcceptSocketFail"));
 	EnterCriticalSection(&dlg->SyncroData);
-	us->ID[NumOfBytesTrans] = '\0';
-	CString a(us->ID);
 	inet_ntop(AF_INET, &saRem.sin_addr.S_un.S_addr, us->addr, sizeof(us->addr));
-	dlg->OnlineUsers.insert(a);
-	dlg->ConnectedSocketSet.insert(std::make_pair(a,us->sock)); // ID와 관련된 소켓을 맵에 집어넣는다. (해당 아이디의 소켓의 연결을 끊기위함)
 	LeaveCriticalSection(&dlg->SyncroData);
 	StartThreadpoolIo(tio);
 	if (us->Reuse)
@@ -376,9 +372,10 @@ void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE insta
 		}
 		EnterCriticalSection(&dlg->SyncroData);
 		dlg->DisconnectedSocket.push(us->sock);
-		dlg->ConnectedSocketSet.erase(CString(us->ID)); // 해당 소켓이 연결이 끊겼으므로 관리해야되는 목록에서 제거
-		dlg->ConnectUserList.DeleteString(dlg->ConnectUserList.FindString(0,CString(us->ID)));
-		dlg->OnlineUsers.erase(CString(us->ID));
+		dlg->ConnectedSocketSet.erase(dlg->FindIDBySocket[us->sock]); // 해당 소켓이 연결이 끊겼으므로 관리해야되는 목록에서 제거
+		dlg->ConnectUserList.DeleteString(dlg->ConnectUserList.FindString(0, dlg->FindIDBySocket[us->sock]));
+		dlg->OnlineUsers.erase(dlg->FindIDBySocket[us->sock]);
+		dlg->FindIDBySocket.erase(us->sock);
 		LeaveCriticalSection(&dlg->SyncroData);
 		StartThreadpoolIo(tio); // 미래에 재사용을 준비하여 스레드풀 스타트 시작
 	}
@@ -525,14 +522,10 @@ void CFaceTheSunServerGUIDlg::OnBnClickedButtonShutdown() //유저 연결 종료
 			std::cout << WSAGetLastError() << std::endl;
 			exit(EXIT_FAILURE);
 		}
-		if (WSAIoctl(ConnectedSocketSet[temp], SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &pDisconnect, sizeof(pDisconnect), &dwb, nullptr, nullptr) == SOCKET_ERROR)
-		{
-			std::cout << WSAGetLastError() << std::endl;
-			AfxMessageBox(_T("DisconnectEX 함수 획득 실패"));
-			exit(EXIT_FAILURE);
-		}
+		FindIDBySocket.erase(ConnectedSocketSet[temp]);
 		closesocket(ConnectedSocketSet[temp]);
 		ConnectedSocketSet.erase(temp);
+		OnlineUsers.erase(temp);
 		AfxMessageBox(_T("정상적으로 연결 종료되었습니다."));
 	}
 }
@@ -630,6 +623,12 @@ void CFaceTheSunServerGUIDlg::LogIn(PackToBuffer* pb, UserDataStream* us)
 	FaceTheSunRecordSet->Close();
 	if (stemp == "ok")
 	{
+		CString a(ID->c_str());
+		OnlineUsers.insert(a);
+		EnterCriticalSection(&SyncroData);
+		ConnectedSocketSet.insert(std::make_pair(a, us->sock)); // ID와 관련된 소켓을 맵에 집어넣는다. (해당 아이디의 소켓의 연결을 끊기위함)
+		FindIDBySocket.insert(std::make_pair(us->sock, a));
+		LeaveCriticalSection(&SyncroData);
 		*pb << PacketID::LogInResult << int(1);
 		int err = send(us->sock,pb->GetBuffer() , sizeof(pb->GetBuffer()), 0);
 		if (err == SOCKET_ERROR)
@@ -694,6 +693,7 @@ void CFaceTheSunServerGUIDlg::IDCheck(PackToBuffer* pb, UserDataStream* us)
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()
 {
 	// TODO: Add your control notification handler code here
+	ListUserData.ResetContent();
 	CString temp = _T("SELECT * FROM USERDATA WHERE ID = '");
 	CString cs;
 	ConnectUserList.GetText(ConnectUserList.GetCurSel(),cs);

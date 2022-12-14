@@ -14,3 +14,5 @@ GO*/
 --insert into UserData(ID,userlevel,currentexp,point,password) values('hello',1,0,0,PWDENCRYPT('1234'))
 
 select (case when count(*)=1 then 'ok' else 'no' end) from userdata where ID = 'hello' and PWDCOMPARE('1234',password) =1
+
+alter table UserData add EquipItem int;
