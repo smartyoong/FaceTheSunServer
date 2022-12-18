@@ -73,6 +73,7 @@ private: // MFC관련 변수
 	CButton ServerOnOffButton; // 서버 온오프
 	CListBox ListUserData; // 유저 상세정보를 출력하는 리스트 박스
 	CEdit EditUserData;  // 유저 데이터를 수정하기 위한 값을 받는 변수
+	CListBox ListLobby; // 방 리스트
 
 private: // 객체 컨테이너
 	std::map<CString, SOCKET> ConnectedSocketSet; // 연결된 소켓들 관리용 키는 ID, 값은 소켓
@@ -82,9 +83,7 @@ private: // 객체 컨테이너
 	std::set<CString>OnlineUsers; // ID는 유니크하므로 SET으로 객체 생성
 	std::map<int, CString> UserDataField; // db 필드명
 	std::map<CString, CString> UserIPField; // ID당 IP 수집용
-
-private:
-	
+	std::vector<RoomInfo> RoomList; // 방 목록들
 
 public: //실행 함수들
 	void BeginAcceptStart(); // accept 시키는 함수
@@ -95,6 +94,7 @@ public: //실행 함수들
 	void SignInDB(PackToBuffer* pb, UserDataStream* us); // 회원가입 함수
 	void LogIn(PackToBuffer* pb, UserDataStream* us); // 로그인
 	void IDCheck(PackToBuffer* pb, UserDataStream* us); //ID체크
+	void CreateRoom(PackToBuffer* pb);
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프

@@ -53,6 +53,22 @@
 		pTemp = nullptr;
 	}
 
+	void PackToBuffer::Serialize(const RoomInfo& in)
+	{
+		Serialize(in.RoomName);
+		Serialize(in.HostName);
+		Serialize(in.CurrentPlayer);
+		Serialize(in.CurrentUserName);
+	}
+
+	void PackToBuffer::DeSerialize(RoomInfo* out)
+	{
+		DeSerialize(&out->RoomName);
+		DeSerialize(&out->HostName);
+		DeSerialize(&out->CurrentPlayer);
+		DeSerialize(&out->CurrentUserName);
+	}
+
 	PackToBuffer& PackToBuffer::operator<<(const int& in)
 	{
 		WRITE(in);

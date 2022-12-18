@@ -66,6 +66,7 @@ void CFaceTheSunServerGUIDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDServerOnOff, ServerOnOffButton);
 	DDX_Control(pDX, IDC_LISTUSERDATA, ListUserData);
 	DDX_Control(pDX, IDC_EDITUSERDATA, EditUserData);
+	DDX_Control(pDX, IDC_LISTROBBY, ListLobby);
 }
 
 BEGIN_MESSAGE_MAP(CFaceTheSunServerGUIDlg, CDialogEx)
@@ -457,7 +458,7 @@ void CFaceTheSunServerGUIDlg::BeginRecvStart(UserDataStream* us) // 데이터 �
 	}
 }
 
-void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us) // 직렬화까지 성공시키면 데이터별로 맞게 함수를 전달할것
+void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 // 항상 데이터를 선 수신후 반드시 발송시키는 형태이기 때문에, 강제 종료가 일어나지 않는 이상 클라측 구현에서도 1번 보내면 1번은 받을수 있도록 구현해둘것 최소한 확인 응답 형식으로라도
 // 일반 send를 사용했는데 받는 것은 비동기적으로 처리한다 할지라도 보내는것은 데이터를 수신후 동기적으로 바로 보내기위함. 다만 스레드풀에서 send가 떨어지므로 논블록된다.
 // 데이터를 받는 것은 클라측에서 결과 등에 따라 맘대로 보내두되기때문에 비동기적으로 호출해도되지만, 데이터 전송은 반드시 즉시 보내게하여서 클라가 원할한 통신을 유지하도록한다.
@@ -482,6 +483,9 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us) // 직렬화까
 		IDCheck(pb, us);
 		break;
 	case PacketID::IDResult :
+		break;
+	case PacketID::AskCreateRoom :
+		CreateRoom(pb);
 		break;
 	default :
 		std::cout << "ErrorOrder" << std::endl;
@@ -688,6 +692,22 @@ void CFaceTheSunServerGUIDlg::IDCheck(PackToBuffer* pb, UserDataStream* us)
 		AfxMessageBox(_T("ID 체크 레코드셋 읽기 실패"));
 	}
 	FaceTheSunRecordSet->Close();
+}
+
+void CFaceTheSunServerGUIDlg::CreateRoom(PackToBuffer* pb)
+{
+	EnterCriticalSection(&SyncroData);
+	RoomInfo info;
+	pb->DeSerialize(&info);
+	RoomList.push_back(info);
+	LeaveCriticalSection(&SyncroData);
+	CString RoomName(info.RoomName.c_str());
+	RoomName += "  호스트 명 : ";
+	RoomName += CString(info.HostName.c_str());
+	RoomName += "  현재 인원수/ 최대 인원수 : ";
+	RoomName += std::to_string(info.CurrentPlayer).c_str();
+	RoomName += "/3";
+	ListLobby.AddString(RoomName);
 }
 
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()

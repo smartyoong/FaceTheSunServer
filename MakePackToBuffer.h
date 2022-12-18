@@ -1,6 +1,5 @@
 #pragma once
-#include<string>
-#include<vector>
+#include "Packet.h"
 class PackToBuffer
 {
 public:
@@ -30,6 +29,8 @@ public:
 	template<typename T>
 	void DeSerialize(std::vector<T>* out);
 	void DeSerialize(std::string* out);
+	void Serialize(const RoomInfo& in);
+	void DeSerialize(RoomInfo* out);
 public:
 	// operator 사용할 것인가?
 	PackToBuffer& operator << (const int& in);
