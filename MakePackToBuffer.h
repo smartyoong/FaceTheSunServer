@@ -31,6 +31,8 @@ public:
 	void DeSerialize(std::string* out);
 	void Serialize(const RoomInfo& in);
 	void DeSerialize(RoomInfo* out);
+	void Serialize(std::vector<RoomInfo>& in); // 특수화
+	void DeSerialize(std::vector<RoomInfo>* out); // 특수화
 public:
 	// operator 사용할 것인가?
 	PackToBuffer& operator << (const int& in);

@@ -14,7 +14,7 @@ enum PacketID : int // 패킷 처리 헤더
 	AskShop = 6, // 요청만 보내는것이기 때문에 따로 패킷은 필요없음 (상점 정보 요청)
 	SendShop = 7, // 상점 정보
 	PurchaseItem = 8, // 아이템 구매 요청
-	SellItem = 9, // 판매
+	SellItem = 9, // 판매(서버측에서 구매한 사람에게로 전송)
 	GameStart = 10, // 게임 시작 어쩌면 방 입장시부터 리슨서버로 전환시킬수도 있으므로 안사용할수도 있음
 	SendGameResult = 11, // 게임 결과 전송
 	RecvGameResult = 12, // 게임 결과 적용 결과 받음
@@ -24,7 +24,10 @@ enum PacketID : int // 패킷 처리 헤더
 	IDResult =16, // ID 중복 결과
 	AskCreateRoom = 17, // 방생성
 	CreateRoomResult = 18, // 방생성 결과 (여기서부터 리슨서버로 전환할 수 있음)
-	DeleteRoom =19 // 방 삭제
+	DeleteRoom =19, // 방 삭제
+	SomeBodyJoin = 20, // 누군가 방 입장시 기존 유저들에게 갱신
+	SendChat = 21, // 방에서 채팅 보내기
+	RecvChat = 22 // 누군가 보낸 채팅 받기
 };
 
 struct RoomInfo
@@ -32,7 +35,7 @@ struct RoomInfo
 	std::string RoomName;
 	std::string HostName;
 	int CurrentPlayer = 1;
-	std::vector<const char*> CurrentUserName;
+	std::vector<const char*> CurrentUserName; // 삭제할것
 	RoomInfo() = default;
 	RoomInfo(std::string Room, std::string Host)
 	{

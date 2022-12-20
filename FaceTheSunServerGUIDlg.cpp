@@ -81,6 +81,7 @@ BEGIN_MESSAGE_MAP(CFaceTheSunServerGUIDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_MODIFY, &CFaceTheSunServerGUIDlg::OnBnClickedButtonModify)
 	ON_BN_CLICKED(IDC_BUTTONUSERDATA, &CFaceTheSunServerGUIDlg::OnBnClickedButtonuserdata)
 	ON_LBN_SELCHANGE(IDC_LISTUSERDATA, &CFaceTheSunServerGUIDlg::OnLbnSelchangeListuserdata)
+	ON_BN_CLICKED(IDROBBYCANCEL, &CFaceTheSunServerGUIDlg::OnBnClickedRobbycancel)
 END_MESSAGE_MAP()
 
 
@@ -467,12 +468,16 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 	pb->SetBuffer(us->buffer, sizeof(us->buffer));
 	int id = 0;
 	*pb >> &id;
+	std::cout << id << std::endl;
 	switch (id)
 	{
 	case PacketID::TryLogIn :
 		LogIn(pb,us);
 		break;
 	case PacketID::LogInResult :
+		break;
+	case PacketID::AskLobby:
+		SendRoomList(pb, us);
 		break;
 	case PacketID::TrySignIn:
 		SignInDB(pb, us);
@@ -710,6 +715,18 @@ void CFaceTheSunServerGUIDlg::CreateRoom(PackToBuffer* pb)
 	ListLobby.AddString(RoomName);
 }
 
+void CFaceTheSunServerGUIDlg::SendRoomList(PackToBuffer* pb, UserDataStream* us)
+{
+	PackToBuffer pbb(sizeof(RoomList)+sizeof(PacketID::SendLobby));
+	pbb << PacketID::SendLobby;
+	pbb.Serialize(RoomList);
+	int err = send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0);
+	if (err == SOCKET_ERROR)
+	{
+		std::cout << WSAGetLastError() << std::endl;
+	}
+}
+
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()
 {
 	// TODO: Add your control notification handler code here
@@ -792,4 +809,10 @@ void CFaceTheSunServerGUIDlg::OnLbnSelchangeListuserdata()
 	{
 		AfxMessageBox(_T("찾기 실패"));
 	}
+}
+
+
+void CFaceTheSunServerGUIDlg::OnBnClickedRobbycancel()
+{
+	// TODO: Add your control notification handler code here
 }

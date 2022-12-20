@@ -84,6 +84,7 @@ private: // 객체 컨테이너
 	std::map<int, CString> UserDataField; // db 필드명
 	std::map<CString, CString> UserIPField; // ID당 IP 수집용
 	std::vector<RoomInfo> RoomList; // 방 목록들
+	std::map<std::string, std::vector<std::string>> RoomUsers; // 도저히 방참가 유저들 직렬화가 안돼서 서버측에서 직접관리 (호스트는 유일키 이므로)
 
 public: //실행 함수들
 	void BeginAcceptStart(); // accept 시키는 함수
@@ -94,7 +95,8 @@ public: //실행 함수들
 	void SignInDB(PackToBuffer* pb, UserDataStream* us); // 회원가입 함수
 	void LogIn(PackToBuffer* pb, UserDataStream* us); // 로그인
 	void IDCheck(PackToBuffer* pb, UserDataStream* us); //ID체크
-	void CreateRoom(PackToBuffer* pb);
+	void CreateRoom(PackToBuffer* pb); // 방 생성
+	void SendRoomList(PackToBuffer* pb, UserDataStream* us); // 방 목록 전달 (string)
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프
@@ -104,11 +106,12 @@ public: // 메세지 함수들
 	afx_msg void OnBnClickedButtonShutdown(); // 상대방 접속 종료
 	afx_msg void OnBnClickedRfreshuser(); // 수동조작으로 접속 유저 목록 동기화
 	afx_msg void OnTimer(UINT_PTR nIDEvent); //유저목록 자동 갱신을 위한 타이머 1분마다
+	afx_msg void OnLbnSelchangeListuserdata(); // 유저 목록에서 선택 바꿈
+	afx_msg void OnBnClickedRobbycancel(); // 로비 종료버튼(방폭)
 
 public: // 콜백 함수들
 	// accept 콜백함수
 	static void CALLBACK TPAcceptCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio);
 	// recv 콜백함수
 	static void CALLBACK TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE instance, PVOID context, PVOID overlapped, ULONG result, ULONG_PTR NumOfBytesTrans, PTP_IO tio);
-	afx_msg void OnLbnSelchangeListuserdata();
 };
