@@ -349,7 +349,7 @@ void CFaceTheSunServerGUIDlg::TPRecvSendCallBackFunc(PTP_CALLBACK_INSTANCE insta
 	{
 		if (NumOfBytesTrans>0) //바로 이전에 데이터를 전송했으니 받아야한다.
 		{
-			us->buffer[NumOfBytesTrans] = '\0';
+			//us->buffer[NumOfBytesTrans] = '\0';
 			dlg->SendKindOfData(us); //상황에 맞게 데이터를 전송하도록 직렬화 함수 필수
 			StartThreadpoolIo(tio);
 			dlg->BeginRecvStart(us); // 데이터 받기 실행
@@ -468,7 +468,6 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 	pb->SetBuffer(us->buffer, sizeof(us->buffer));
 	int id = 0;
 	*pb >> &id;
-	std::cout << id << std::endl;
 	switch (id)
 	{
 	case PacketID::TryLogIn :
@@ -705,6 +704,7 @@ void CFaceTheSunServerGUIDlg::CreateRoom(PackToBuffer* pb)
 	RoomInfo info;
 	pb->DeSerialize(&info);
 	RoomList.push_back(info);
+	RoomUsers.insert(std::make_pair(info.HostName, info.HostName));
 	LeaveCriticalSection(&SyncroData);
 	CString RoomName(info.RoomName.c_str());
 	RoomName += "  호스트 명 : ";
@@ -717,9 +717,15 @@ void CFaceTheSunServerGUIDlg::CreateRoom(PackToBuffer* pb)
 
 void CFaceTheSunServerGUIDlg::SendRoomList(PackToBuffer* pb, UserDataStream* us)
 {
-	PackToBuffer pbb(sizeof(RoomList)+sizeof(PacketID::SendLobby));
-	pbb << PacketID::SendLobby;
-	pbb.Serialize(RoomList);
+	//RoomInfo 구조체의 개별의 사이즈가 다르므로 애를 좀 먹네요;;
+	PackToBuffer pbb(8192); //sizeof(PacketID::SendLobby) + sizeof((int)RoomList.size())+sizeof(RoomList.capacity())+sizeof(int)*RoomList.size()*2
+	pbb << PacketID::SendLobby << (int)RoomList.size();
+	for (int i = 0; i <RoomList.size(); ++i)
+	{
+		pbb << (int)sizeof(RoomList[i].RoomName) << (int)sizeof(RoomList[i].HostName);
+		pbb.Serialize(RoomList[i]);
+	}
+	std::cout << RoomList.size() << std::endl;
 	int err = send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0);
 	if (err == SOCKET_ERROR)
 	{

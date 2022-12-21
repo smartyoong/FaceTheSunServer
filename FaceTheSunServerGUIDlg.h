@@ -84,7 +84,7 @@ private: // 객체 컨테이너
 	std::map<int, CString> UserDataField; // db 필드명
 	std::map<CString, CString> UserIPField; // ID당 IP 수집용
 	std::vector<RoomInfo> RoomList; // 방 목록들
-	std::map<std::string, std::vector<std::string>> RoomUsers; // 도저히 방참가 유저들 직렬화가 안돼서 서버측에서 직접관리 (호스트는 유일키 이므로)
+	std::multimap<std::string, std::string> RoomUsers; // 도저히 방참가 유저들 직렬화가 안돼서 서버측에서 직접관리 (호스트는 유일키 이므로)
 
 public: //실행 함수들
 	void BeginAcceptStart(); // accept 시키는 함수

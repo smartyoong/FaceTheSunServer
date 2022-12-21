@@ -58,7 +58,7 @@
 		Serialize(in.RoomName);
 		Serialize(in.HostName);
 		Serialize(in.CurrentPlayer);
-		Serialize(in.CurrentUserName);
+		Serialize(in.CanJoin);
 	}
 
 	void PackToBuffer::DeSerialize(RoomInfo* out)
@@ -66,7 +66,7 @@
 		DeSerialize(&out->RoomName);
 		DeSerialize(&out->HostName);
 		DeSerialize(&out->CurrentPlayer);
-		DeSerialize(&out->CurrentUserName);
+		DeSerialize(&out->CanJoin);
 	}
 
 	PackToBuffer& PackToBuffer::operator<<(const int& in)
