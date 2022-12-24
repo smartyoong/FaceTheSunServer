@@ -725,7 +725,6 @@ void CFaceTheSunServerGUIDlg::SendRoomList(PackToBuffer* pb, UserDataStream* us)
 		pbb << (int)sizeof(RoomList[i].RoomName) << (int)sizeof(RoomList[i].HostName);
 		pbb.Serialize(RoomList[i]);
 	}
-	std::cout << RoomList.size() << std::endl;
 	int err = send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0);
 	if (err == SOCKET_ERROR)
 	{
