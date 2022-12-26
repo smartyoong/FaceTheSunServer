@@ -491,6 +491,9 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 	case PacketID::AskCreateRoom :
 		CreateRoom(pb);
 		break;
+	case PacketID::AskToRoom :
+		JoinRoom(pb, us);
+		break;
 	default :
 		std::cout << "ErrorOrder" << std::endl;
 		break;
@@ -709,9 +712,11 @@ void CFaceTheSunServerGUIDlg::CreateRoom(PackToBuffer* pb)
 	CString RoomName(info.RoomName.c_str());
 	RoomName += "  호스트 명 : ";
 	RoomName += CString(info.HostName.c_str());
-	RoomName += "  현재 인원수/ 최대 인원수 : ";
+	/*
+	* RoomName += "  현재 인원수/ 최대 인원수 : ";
 	RoomName += std::to_string(info.CurrentPlayer).c_str();
 	RoomName += "/3";
+	*/
 	ListLobby.AddString(RoomName);
 }
 
@@ -729,6 +734,57 @@ void CFaceTheSunServerGUIDlg::SendRoomList(PackToBuffer* pb, UserDataStream* us)
 	if (err == SOCKET_ERROR)
 	{
 		std::cout << WSAGetLastError() << std::endl;
+	}
+}
+
+void CFaceTheSunServerGUIDlg::JoinRoom(PackToBuffer* pb, UserDataStream* us)
+{
+	std::string HostNameInfo;
+	std::string JoinUserName;
+	int RoomIndex;
+	*pb >> &HostNameInfo >> &JoinUserName >> &RoomIndex;
+	if (RoomList[RoomIndex].CanJoin)
+	{
+		EnterCriticalSection(&SyncroData);
+		RoomUsers.insert(std::make_pair(HostNameInfo, JoinUserName));
+		RoomList[RoomIndex].CurrentPlayer++;
+		LeaveCriticalSection(&SyncroData);
+		PackToBuffer pbb(1024);
+		pbb << PacketID::SendRoomInfo << RoomList[RoomIndex].CanJoin << RoomList[RoomIndex].CurrentPlayer;
+		pbb.Serialize(RoomList[RoomIndex]);
+		auto RUIter = RoomUsers.equal_range(HostNameInfo);
+		for (auto i = RUIter.first; i != RUIter.second; ++i)
+		{
+			pbb << i->second;
+			PackToBuffer pbbb(sizeof(PacketID::SomeBodyJoin)+sizeof(JoinUserName));
+			pbbb << PacketID::SomeBodyJoin << JoinUserName;
+			int err = send(ConnectedSocketSet[CString(i->second.c_str())], pbbb.GetBuffer(), pbbb.GetBufferSize(), 0);
+			if (err == SOCKET_ERROR)
+			{
+				std::cout << WSAGetLastError() << std::endl;
+			}
+		}
+		int err = send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0);
+		if (err == SOCKET_ERROR)
+		{
+			std::cout << WSAGetLastError() << std::endl;
+		}
+	}
+	else
+	{
+		PackToBuffer pbb(1024);
+		pbb << PacketID::SendRoomInfo << RoomList[RoomIndex].CanJoin << RoomList[RoomIndex].CurrentPlayer;
+		int err = send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0);
+		if (err == SOCKET_ERROR)
+		{
+			std::cout << WSAGetLastError() << std::endl;
+		}
+	}
+	if (RoomList[RoomIndex].CurrentPlayer >= 3)
+	{
+		EnterCriticalSection(&SyncroData);
+		RoomList[RoomIndex].CanJoin = false;
+		LeaveCriticalSection(&SyncroData);
 	}
 }
 
@@ -798,6 +854,7 @@ void CFaceTheSunServerGUIDlg::InsertDBField()
 	UserDataField.insert(std::make_pair(3, _T("Point : ")));
 	UserDataField.insert(std::make_pair(4, _T("IP : ")));
 	UserDataField.insert(std::make_pair(5, _T("Password : ")));
+	UserDataField.insert(std::make_pair(6, _T("현재 장착한 아이템 번호 : ")));
 }
 
 

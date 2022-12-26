@@ -97,6 +97,7 @@ public: //실행 함수들
 	void IDCheck(PackToBuffer* pb, UserDataStream* us); //ID체크
 	void CreateRoom(PackToBuffer* pb); // 방 생성
 	void SendRoomList(PackToBuffer* pb, UserDataStream* us); // 방 목록 전달 (string)
+	void JoinRoom(PackToBuffer* pb, UserDataStream* us); // 방 정보 전달
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프

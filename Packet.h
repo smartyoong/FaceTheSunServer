@@ -23,7 +23,7 @@ enum PacketID : int // 패킷 처리 헤더
 	TryID = 15, // ID 중복 체크
 	IDResult =16, // ID 중복 결과
 	AskCreateRoom = 17, // 방생성
-	CreateRoomResult = 18, // 방생성 결과 (여기서부터 리슨서버로 전환할 수 있음)
+	CreateRoomResult = 18, // 방생성 결과
 	DeleteRoom =19, // 방 삭제
 	SomeBodyJoin = 20, // 누군가 방 입장시 기존 유저들에게 갱신
 	SendChat = 21, // 방에서 채팅 보내기
