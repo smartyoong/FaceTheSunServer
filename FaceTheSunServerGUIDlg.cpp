@@ -494,6 +494,12 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 	case PacketID::AskToRoom :
 		JoinRoom(pb, us);
 		break;
+	case PacketID::DeleteRoom:
+		DeleteRoom(pb, us);
+		break;
+	case PacketID::SendChat:
+		Chatting(pb, us);
+		break;
 	default :
 		std::cout << "ErrorOrder" << std::endl;
 		break;
@@ -785,6 +791,34 @@ void CFaceTheSunServerGUIDlg::JoinRoom(PackToBuffer* pb, UserDataStream* us)
 		EnterCriticalSection(&SyncroData);
 		RoomList[RoomIndex].CanJoin = false;
 		LeaveCriticalSection(&SyncroData);
+	}
+}
+
+void CFaceTheSunServerGUIDlg::DeleteRoom(PackToBuffer* pb, UserDataStream* us)
+{
+	PackToBuffer pbb(sizeof(PacketID::DeleteRoom));
+	pbb << PacketID::DeleteRoom;
+	int err = send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0);
+	if (err == SOCKET_ERROR)
+		std::cout << WSAGetLastError() << std::endl;
+}
+
+void CFaceTheSunServerGUIDlg::Chatting(PackToBuffer* pb, UserDataStream* us)
+{
+	std::string HostName;
+	std::string CharacterName;
+	std::string Chat;
+	*pb >> &HostName >> &CharacterName >> &Chat;
+	CharacterName += " : ";
+	CharacterName += Chat;
+	auto iterPair = RoomUsers.equal_range(HostName);
+	for (auto iter = iterPair.first; iter != iterPair.second; ++iter)
+	{
+		PackToBuffer pbb(sizeof(PacketID::RecvChat) + sizeof(CharacterName));
+		pbb << PacketID::RecvChat << CharacterName;
+		int err = send(ConnectedSocketSet[CString(iter->second.c_str())], pbb.GetBuffer(), pbb.GetBufferSize(), 0);
+		if (err == SOCKET_ERROR)
+			std::cout << WSAGetLastError() << std::endl;
 	}
 }
 

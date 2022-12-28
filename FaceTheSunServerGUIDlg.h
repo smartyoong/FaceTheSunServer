@@ -76,15 +76,15 @@ private: // MFC관련 변수
 	CListBox ListLobby; // 방 리스트
 
 private: // 객체 컨테이너
-	std::map<CString, SOCKET> ConnectedSocketSet; // 연결된 소켓들 관리용 키는 ID, 값은 소켓
-	std::map<SOCKET, CString> FindIDBySocket; // 나중에 Disconnect시 역으로 관리용
+	std::map<CString, SOCKET> ConnectedSocketSet; // 연결된 소켓들 관리용 키는 ID, 값은 소켓 (ID,Socket)
+	std::map<SOCKET, CString> FindIDBySocket; // 나중에 Disconnect시 역으로 관리용 (Socket,ID)
 	std::vector<UserDataStream*>USArray; // UserData보관하다가 나중에 TP관리용
 	std::queue<SOCKET>DisconnectedSocket; // 연결이 끊긴 소켓들을 보관했다가 재사용하는데 초점을 둔다.
 	std::set<CString>OnlineUsers; // ID는 유니크하므로 SET으로 객체 생성
 	std::map<int, CString> UserDataField; // db 필드명
-	std::map<CString, CString> UserIPField; // ID당 IP 수집용
+	std::map<CString, CString> UserIPField; // ID당 IP 수집용 (ID,IP)
 	std::vector<RoomInfo> RoomList; // 방 목록들
-	std::multimap<std::string, std::string> RoomUsers; // 도저히 방참가 유저들 직렬화가 안돼서 서버측에서 직접관리 (호스트는 유일키 이므로)
+	std::multimap<std::string, std::string> RoomUsers; // 도저히 방참가 유저들 직렬화가 안돼서 서버측에서 직접관리 (호스트,유저명 호스트는 유일키 이므로)
 
 public: //실행 함수들
 	void BeginAcceptStart(); // accept 시키는 함수
@@ -98,6 +98,8 @@ public: //실행 함수들
 	void CreateRoom(PackToBuffer* pb); // 방 생성
 	void SendRoomList(PackToBuffer* pb, UserDataStream* us); // 방 목록 전달 (string)
 	void JoinRoom(PackToBuffer* pb, UserDataStream* us); // 방 정보 전달
+	void DeleteRoom(PackToBuffer* pb, UserDataStream* us); //방삭제
+	void Chatting(PackToBuffer* pb, UserDataStream* us); // 채팅
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프
