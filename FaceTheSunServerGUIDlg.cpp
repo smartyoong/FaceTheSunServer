@@ -206,6 +206,7 @@ void CFaceTheSunServerGUIDlg::OnClickedIdserveronoff()
 		closesocket(ListenSock);
 		DeleteCriticalSection(&SyncroData);
 		WSACleanup();
+		CleanUpAllClientVar();
 		EditServerStatus.SetWindowTextW(_T("서버가 정상적으로 종료되었습니다"));
 		KillTimer(0);
 		IsServerOn = false;
@@ -496,6 +497,12 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 		break;
 	case PacketID::DeleteRoom:
 		DeleteRoom(pb, us);
+		break;
+	case PacketID::DeleteRoomHost:
+		DeleteHost(pb, us);
+		break;
+	case PacketID::DeleteRoomMember:
+		DeleteMember(pb, us);
 		break;
 	case PacketID::SendChat:
 		Chatting(pb, us);
@@ -822,6 +829,85 @@ void CFaceTheSunServerGUIDlg::Chatting(PackToBuffer* pb, UserDataStream* us)
 	}
 }
 
+void CFaceTheSunServerGUIDlg::DeleteMember(PackToBuffer* pb, UserDataStream* us)
+{
+	std::string room;
+	std::string MemberString;
+	*pb >> &room >> &MemberString;
+	auto IterPair = RoomUsers.equal_range(room);
+	for (auto iter = IterPair.first; iter != IterPair.second; ++iter)
+	{
+		if (MemberString == iter->second)
+		{
+			RoomUsers.erase(iter);
+			break;
+		}
+	}
+	IterPair = RoomUsers.equal_range(room);
+	for (auto iter = IterPair.first; iter != IterPair.second; ++iter)
+	{
+		PackToBuffer pbb(512);
+		pbb << PacketID::DeleteRoomMember << MemberString;
+		if (send(ConnectedSocketSet[CString(iter->second.c_str())], pbb.GetBuffer(), pbb.GetBufferSize(), 0) == SOCKET_ERROR)
+			std::cout << WSAGetLastError() << std::endl;
+	}
+	PackToBuffer pbb(32);
+	pbb << PacketID::DeleteRoomHost; // 방장이 나간것은 아니지만, 효과는 방장이 나간것하고 똑같기때문에 방장이 나간것처럼 한다.
+	if(send(us->sock,pbb.GetBuffer(),pbb.GetBufferSize(),0)==SOCKET_ERROR)
+		std::cout << WSAGetLastError() << std::endl;
+	for (auto a : RoomList)
+	{
+		if (a.HostName == room)
+		{
+			a.CurrentPlayer--;
+			if (!a.CanJoin)
+				a.CanJoin = true;
+			break;
+		}
+	}
+}
+
+void CFaceTheSunServerGUIDlg::DeleteHost(PackToBuffer* pb, UserDataStream* us)
+{
+	std::string HostNameString;
+	*pb >> &HostNameString;
+	auto IterPair =  RoomUsers.equal_range(HostNameString);
+	PackToBuffer pbb(32);
+	pbb << PacketID::DeleteRoomHost;
+	for (auto iter = IterPair.first; iter != IterPair.second; ++iter)
+	{
+		if (send(ConnectedSocketSet[CString(iter->second.c_str())], pbb.GetBuffer(), pbb.GetBufferSize(), 0) == SOCKET_ERROR)
+			std::cout << WSAGetLastError() << std::endl;
+	}
+	RoomUsers.erase(HostNameString);
+	int index = 0;
+	for (auto a : RoomList)
+	{
+		if (a.HostName == HostNameString)
+			break;
+		index++;
+	}
+	RoomList.erase(RoomList.begin() + index);
+	ListLobby.DeleteString(index);
+}
+
+void CFaceTheSunServerGUIDlg::CleanUpAllClientVar()
+{
+	ConnectUserList.ResetContent();
+	ListUserData.ResetContent();
+	EditUserData.Clear();
+	ListLobby.ResetContent();
+	ConnectedSocketSet.clear();
+	FindIDBySocket.clear();
+	USArray.clear();
+	DisconnectedSocket = std::queue<SOCKET>();
+	OnlineUsers.clear();
+	UserDataField.clear();
+	UserIPField.clear();
+	RoomList.clear();
+	RoomUsers.clear();
+}
+
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()
 {
 	// TODO: Add your control notification handler code here
@@ -911,4 +997,16 @@ void CFaceTheSunServerGUIDlg::OnLbnSelchangeListuserdata()
 void CFaceTheSunServerGUIDlg::OnBnClickedRobbycancel()
 {
 	// TODO: Add your control notification handler code here
+	int index = ListLobby.GetCurSel();
+	auto IterPair = RoomUsers.equal_range(RoomList[index].HostName);
+	for (auto iter = IterPair.first; iter != IterPair.second; ++iter)
+	{
+		PackToBuffer pb(32);
+		pb << PacketID::DeleteRoomHost;
+		if(send(ConnectedSocketSet[CString(iter->second.c_str())],pb.GetBuffer(),pb.GetBufferSize(),0) == SOCKET_ERROR)
+			std::cout << WSAGetLastError() << std::endl;
+	}
+	RoomUsers.erase(RoomList[0].HostName);
+	RoomList.erase(RoomList.begin() + index);
+	ListLobby.DeleteString(index);
 }

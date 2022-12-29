@@ -100,6 +100,9 @@ public: //실행 함수들
 	void JoinRoom(PackToBuffer* pb, UserDataStream* us); // 방 정보 전달
 	void DeleteRoom(PackToBuffer* pb, UserDataStream* us); //방삭제
 	void Chatting(PackToBuffer* pb, UserDataStream* us); // 채팅
+	void DeleteMember(PackToBuffer* pb, UserDataStream* us); // 멤버 나가기
+	void DeleteHost(PackToBuffer* pb, UserDataStream* us); //호스트 나가기
+	void CleanUpAllClientVar();
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프
