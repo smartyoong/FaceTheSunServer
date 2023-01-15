@@ -507,6 +507,9 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 	case PacketID::SendChat:
 		Chatting(pb, us);
 		break;
+	case PacketID::GameStart:
+		GameStart(pb, us);
+		break;
 	default :
 		std::cout << "ErrorOrder" << std::endl;
 		break;
@@ -906,6 +909,19 @@ void CFaceTheSunServerGUIDlg::CleanUpAllClientVar()
 	UserIPField.clear();
 	RoomList.clear();
 	RoomUsers.clear();
+}
+
+void CFaceTheSunServerGUIDlg::GameStart(PackToBuffer* pb, UserDataStream* us)
+{
+	std::string HostName;
+	*pb >> &HostName;
+	CString HostIP = UserIPField[CString(HostName.c_str())];
+	std::string HostStringIP = std::string(CT2CA(HostIP));
+	PackToBuffer pbb(sizeof(PacketID::GameStart) + sizeof(HostStringIP));
+	if (send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0) == SOCKET_ERROR)
+		std::cout << WSAGetLastError() << std::endl;
+
+
 }
 
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()

@@ -102,7 +102,8 @@ public: //실행 함수들
 	void Chatting(PackToBuffer* pb, UserDataStream* us); // 채팅
 	void DeleteMember(PackToBuffer* pb, UserDataStream* us); // 멤버 나가기
 	void DeleteHost(PackToBuffer* pb, UserDataStream* us); //호스트 나가기
-	void CleanUpAllClientVar();
+	void CleanUpAllClientVar(); // 초기화
+	void GameStart(PackToBuffer* pb, UserDataStream* us); // 게임시작
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프
