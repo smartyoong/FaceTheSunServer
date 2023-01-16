@@ -772,6 +772,8 @@ void CFaceTheSunServerGUIDlg::JoinRoom(PackToBuffer* pb, UserDataStream* us)
 		for (auto i = RUIter.first; i != RUIter.second; ++i)
 		{
 			pbb << i->second;
+			if (i->second == JoinUserName)
+				continue;
 			PackToBuffer pbbb(sizeof(PacketID::SomeBodyJoin)+sizeof(JoinUserName));
 			pbbb << PacketID::SomeBodyJoin << JoinUserName;
 			int err = send(ConnectedSocketSet[CString(i->second.c_str())], pbbb.GetBuffer(), pbbb.GetBufferSize(), 0);
@@ -780,11 +782,9 @@ void CFaceTheSunServerGUIDlg::JoinRoom(PackToBuffer* pb, UserDataStream* us)
 				std::cout << WSAGetLastError() << std::endl;
 			}
 		}
-		int err = send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0);
-		if (err == SOCKET_ERROR)
-		{
+		int errnom = send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0);
+		if (errnom == SOCKET_ERROR)
 			std::cout << WSAGetLastError() << std::endl;
-		}
 	}
 	else
 	{
@@ -918,6 +918,7 @@ void CFaceTheSunServerGUIDlg::GameStart(PackToBuffer* pb, UserDataStream* us)
 	CString HostIP = UserIPField[CString(HostName.c_str())];
 	std::string HostStringIP = std::string(CT2CA(HostIP));
 	PackToBuffer pbb(sizeof(PacketID::GameStart) + sizeof(HostStringIP));
+	pbb << PacketID::GameStart << HostStringIP;
 	if (send(us->sock, pbb.GetBuffer(), pbb.GetBufferSize(), 0) == SOCKET_ERROR)
 		std::cout << WSAGetLastError() << std::endl;
 
