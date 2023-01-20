@@ -510,6 +510,9 @@ void CFaceTheSunServerGUIDlg::SendKindOfData(UserDataStream* us)
 	case PacketID::GameStart:
 		GameStart(pb, us);
 		break;
+	case PacketID::SendGameResult:
+		GameEnd(pb, us);
+		break;
 	default :
 		std::cout << "ErrorOrder" << std::endl;
 		break;
@@ -923,6 +926,31 @@ void CFaceTheSunServerGUIDlg::GameStart(PackToBuffer* pb, UserDataStream* us)
 		std::cout << WSAGetLastError() << std::endl;
 
 
+}
+
+void CFaceTheSunServerGUIDlg::GameEnd(PackToBuffer* pb, UserDataStream* us)
+{
+	std::string CharacterName;
+	bool IsWin;
+	*pb >> &CharacterName >> &IsWin;
+	if (IsWin)
+	{
+		CString Sql(_T("UPDATE USERDATA SET currentexp = currentexp + 100, point = point + 10 where ID = '"));
+		Sql += CString(CharacterName.c_str());
+		Sql += CString(_T("';"));
+		FaceTheSunDB.BeginTrans();
+		FaceTheSunDB.ExecuteSQL(Sql);
+		FaceTheSunDB.CommitTrans();
+	}
+	else
+	{
+		CString Sql(_T("UPDATE USERDATA SET currentexp = currentexp + 50, point = point + 5 where ID = '"));
+		Sql += CString(CharacterName.c_str());
+		Sql += CString(_T("';"));
+		FaceTheSunDB.BeginTrans();
+		FaceTheSunDB.ExecuteSQL(Sql);
+		FaceTheSunDB.CommitTrans();
+	}
 }
 
 void CFaceTheSunServerGUIDlg::OnBnClickedButtonModify()

@@ -104,6 +104,7 @@ public: //실행 함수들
 	void DeleteHost(PackToBuffer* pb, UserDataStream* us); //호스트 나가기
 	void CleanUpAllClientVar(); // 초기화
 	void GameStart(PackToBuffer* pb, UserDataStream* us); // 게임시작
+	void GameEnd(PackToBuffer* pb, UserDataStream* us); // 게임결과 반영
 
 public: // 메세지 함수들
 	afx_msg void OnClickedIdserveronoff(); // 서버 온오프
