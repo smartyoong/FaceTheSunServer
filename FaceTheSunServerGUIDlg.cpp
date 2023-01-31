@@ -990,6 +990,12 @@ void CFaceTheSunServerGUIDlg::OnBnClickedButtonuserdata() // 앞으로 추가될
 		temp += "'";
 		CString Sql(_T("UPDATE USERDATA SET "));
 		Sql += temp;
+		CString Sql2(_T("Where ID = '"));
+		Sql += Sql2;
+		CString cs;
+		ConnectUserList.GetText(ConnectUserList.GetCurSel(), cs);
+		Sql += cs;
+		Sql += _T("'");
 		FaceTheSunDB.BeginTrans();
 		FaceTheSunDB.ExecuteSQL(Sql);
 		FaceTheSunDB.CommitTrans();
@@ -1014,7 +1020,7 @@ void CFaceTheSunServerGUIDlg::OnBnClickedButtonuserdata() // 앞으로 추가될
 void CFaceTheSunServerGUIDlg::InsertDBField()
 {
 	UserDataField.insert(std::make_pair(0, _T("ID : ")));
-	UserDataField.insert(std::make_pair(1, _T("Level : ")));
+	UserDataField.insert(std::make_pair(1, _T("UserLevel : ")));
 	UserDataField.insert(std::make_pair(2, _T("CurrentEXP : ")));
 	UserDataField.insert(std::make_pair(3, _T("Point : ")));
 	UserDataField.insert(std::make_pair(4, _T("IP : ")));
